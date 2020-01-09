@@ -94,6 +94,8 @@
                   <include>org.apache.hive:hive-service-rpc</include>
                   <include>org.apache.hive:hive-metastore</include>
                   <include>org.apache.hive:hive-jdbc</include>
+
+                  <include>org.apache.spark:spark-avro_2.11</include>
                 </includes>
               </artifactSet>
               <relocations>
