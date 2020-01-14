@@ -204,6 +204,12 @@
                       <include>log4j:log4j</include>
                   </includes>
                 </artifactSet>
+                <relocations>
+                    <relocation>
+                        <pattern>org.eclipse.jetty.</pattern>
+                        <shadedPattern>${timeline.service.jetty.shade.prefix}org.eclipse.jetty.</shadedPattern>
+                    </relocation>
+                </relocations>
             </configuration>
             <executions>
                 <execution>

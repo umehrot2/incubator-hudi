@@ -87,11 +87,12 @@
     <log4j.version>1.2.17</log4j.version>
     <slf4j.version>1.7.5</slf4j.version>
     <joda.version>2.9.9</joda.version>
-    <hadoop.version>2.7.3</hadoop.version>
+    <hadoop.version>3.2.1</hadoop.version>
     <hive.groupid>org.apache.hive</hive.groupid>
-    <hive.version>2.3.1</hive.version>
     <hive.exec.classifier>core</hive.exec.classifier>
     <metrics.version>4.1.1</metrics.version>
+    <hive.version>3.1.2</hive.version>
+    <tez.version>0.9.2</tez.version>
     <spark.version>2.4.4</spark.version>
     <avro.version>1.8.2</avro.version>
     <scala.version>2.11.8</scala.version>
@@ -101,8 +102,8 @@
     <scalatest.version>3.0.1</scalatest.version>
     <surefire-log4j.file>file://${project.basedir}/src/test/resources/log4j-surefire.properties</surefire-log4j.file>
     <thrift.version>0.12.0</thrift.version>
-    <jetty.version>7.6.0.v20120127</jetty.version>
-    <hbase.version>1.2.3</hbase.version>
+    <jetty.version>9.3.20.v20170531</jetty.version>
+    <hbase.version>2.2.2</hbase.version>
     <codehaus-jackson.version>1.9.13</codehaus-jackson.version>
     <h2.version>1.4.199</h2.version>
     <skipTests>false</skipTests>
@@ -116,6 +117,7 @@
     <utilities.bundle.hive.shade.prefix></utilities.bundle.hive.shade.prefix>
     <argLine>-Xmx1024m -XX:MaxPermSize=256m</argLine>
     <jacoco.version>0.8.5</jacoco.version>
+    <timeline.service.jetty.shade.prefix>org.apache.hudi.timeline-service-jetty.</timeline.service.jetty.shade.prefix>
   </properties>
 
   <scm>
@@ -455,13 +457,6 @@
         <groupId>org.glassfish.jersey.containers</groupId>
         <artifactId>jersey-container-servlet-core</artifactId>
         <version>${glassfish.version}</version>
-      </dependency>
-      <!-- Needed for running HiveServer for Tests -->
-      <dependency>
-        <groupId>org.eclipse.jetty.aggregate</groupId>
-        <artifactId>jetty-all</artifactId>
-        <scope>test</scope>
-        <version>${jetty.version}</version>
       </dependency>
 
       <!-- Avro -->
