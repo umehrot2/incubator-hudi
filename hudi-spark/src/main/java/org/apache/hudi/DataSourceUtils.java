@@ -43,6 +43,7 @@ import org.apache.hudi.index.HoodieIndex;
 import org.apache.avro.Schema.Field;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hudi.keygen.KeyGenerator;
+import org.apache.hudi.table.UserDefinedBulkInsertPartitioner;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
@@ -155,6 +156,24 @@ public class DataSourceUtils {
   }
 
   /**
+   * Create a UserDefinedBulkInsertPartitioner class via reflection,
+   * <br>
+   * if the class name of UserDefinedBulkInsertPartitioner is configured through the HoodieWriteConfig.
+   * @see HoodieWriteConfig#getUserDefinedBulkInsertPartitionerClass()
+   */
+  private static Option<UserDefinedBulkInsertPartitioner> createUserDefinedBulkInsertPartitioner(HoodieWriteConfig config)
+          throws IOException {
+    String bulkInsertPartitionerClass = config.getUserDefinedBulkInsertPartitionerClass();
+    try {
+      return bulkInsertPartitionerClass == null || bulkInsertPartitionerClass.isEmpty()
+              ? Option.empty() :
+              Option.of((UserDefinedBulkInsertPartitioner) ReflectionUtils.loadClass(bulkInsertPartitionerClass));
+    } catch (Throwable e) {
+      throw new IOException("Could not create UserDefinedBulkInsertPartitioner class " + bulkInsertPartitionerClass, e);
+    }
+  }
+
+  /**
    * Create a payload class via reflection, passing in an ordering/precombine value.
    */
   public static HoodieRecordPayload createPayload(String payloadClass, GenericRecord record, Comparable orderingVal)
@@ -198,9 +217,11 @@ public class DataSourceUtils {
   }
 
   public static JavaRDD<WriteStatus> doWriteOperation(HoodieWriteClient client, JavaRDD<HoodieRecord> hoodieRecords,
-                                                      String commitTime, String operation) {
+                                                      String commitTime, String operation) throws IOException {
     if (operation.equals(DataSourceWriteOptions.BULK_INSERT_OPERATION_OPT_VAL())) {
-      return client.bulkInsert(hoodieRecords, commitTime);
+      Option<UserDefinedBulkInsertPartitioner> userDefinedBulkInsertPartitioner =
+              createUserDefinedBulkInsertPartitioner(client.getConfig());
+      return client.bulkInsert(hoodieRecords, commitTime, userDefinedBulkInsertPartitioner);
     } else if (operation.equals(DataSourceWriteOptions.INSERT_OPERATION_OPT_VAL())) {
       return client.insert(hoodieRecords, commitTime);
     } else {
