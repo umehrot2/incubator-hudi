@@ -344,7 +344,8 @@ public class DataSourceUtils {
     System.out.println("Getting table path from directory path : " + fileStatus.getPath().toString());
     Path tablePath = new Path(fileStatus.getPath().toString());
 
-    while (tablePath != null && !fs.exists(new Path(tablePath, HoodieTableMetaClient.METAFOLDER_NAME))) {
+    while (tablePath != null
+             && !fs.exists(new Path(tablePath, HoodieTableMetaClient.METAFOLDER_NAME + "/hoodie.properties"))) {
       tablePath = tablePath.getParent();
     }
 

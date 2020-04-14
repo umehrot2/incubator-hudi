@@ -15,11 +15,14 @@
  * limitations under the License.
  */
 
+import java.time.Instant
+
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hudi.common.HoodieTestDataGenerator
 import org.apache.hudi.common.fs.FSUtils
 import org.apache.hudi.config.HoodieWriteConfig
 import org.apache.hudi.{DataSourceReadOptions, DataSourceWriteOptions, HoodieDataSourceHelpers}
+import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.streaming.{OutputMode, ProcessingTime}
@@ -48,6 +51,7 @@ class TestDataSource {
     HoodieWriteConfig.TABLE_NAME -> "hoodie_test"
   )
   var basePath: String = null
+  var srcPath: String = null
   var fs: FileSystem = null
 
   @BeforeEach def initialize(@TempDir tempDir: java.nio.file.Path) {
@@ -57,7 +61,8 @@ class TestDataSource {
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .getOrCreate
     dataGen = new HoodieTestDataGenerator()
-    basePath = tempDir.toAbsolutePath.toString
+    basePath = tempDir.toAbsolutePath.toString + "/base"
+    srcPath = tempDir.toAbsolutePath.toString + "/src"
     fs = FSUtils.getFs(basePath, spark.sparkContext.hadoopConfiguration)
   }
 
@@ -72,6 +77,230 @@ class TestDataSource {
       .save(basePath)
 
     assertTrue(HoodieDataSourceHelpers.hasNewCommits(fs, basePath, "000"))
+  }
+
+  @Test def testMetaBootstrapCOWUnpartitioned(): Unit = {
+    val timestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecords = 100
+    val jsc = JavaSparkContext.fromSparkContext(spark.sparkContext)
+
+    var sourceDF = HoodieTestDataGenerator.generateTestRawTripDataset(timestamp, numRecords, List(), jsc,
+      spark.sqlContext)
+    sourceDF = sourceDF.drop("tip_history")
+
+    // Write source data unpartitioned
+    sourceDF.write
+      .format("parquet")
+      .mode(SaveMode.Overwrite)
+      .save(srcPath)
+
+    // Perform bootstrap
+    val bootstrapDF = spark.emptyDataFrame
+    bootstrapDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL)
+      .option(HoodieWriteConfig.SOURCE_BASE_PATH_PROP, srcPath)
+      .option("hoodie.bootstrap.recordkey.columns", "_row_key")
+      .mode(SaveMode.Overwrite)
+      .save(basePath)
+
+    // Read bootstrapped table and verify count
+    var hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+
+    // Perform upsert
+    val updateTimestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecordsUpdate = 10
+    var updateDF = HoodieTestDataGenerator.generateTestRawTripDataset(updateTimestamp, numRecordsUpdate, List(), jsc,
+      spark.sqlContext)
+    updateDF = updateDF.drop("tip_history")
+
+    updateDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option("hoodie.upsert.shuffle.parallelism", "4")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.UPSERT_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY, DataSourceWriteOptions.COW_STORAGE_TYPE_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(DataSourceWriteOptions.KEYGENERATOR_CLASS_OPT_KEY, "org.apache.hudi.keygen.NonpartitionedKeyGenerator")
+      .mode(SaveMode.Append)
+      .save(basePath)
+
+    // Read table after upsert and verify count
+    hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+    assertEquals(numRecordsUpdate, hoodieROViewDF1.filter(s"timestamp == $updateTimestamp").count())
+  }
+
+  @Test def testMetaBootstrapCOWUnpartitionedFailing(): Unit = {
+    val timestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecords = 100
+    val jsc = JavaSparkContext.fromSparkContext(spark.sparkContext)
+
+    val sourceDF = HoodieTestDataGenerator.generateTestRawTripDataset(timestamp, numRecords, List(), jsc,
+      spark.sqlContext)
+
+    // Write source data unpartitioned
+    sourceDF.write
+      .format("parquet")
+      .mode(SaveMode.Overwrite)
+      .save(srcPath)
+
+    // Perform bootstrap
+    val bootstrapDF = spark.emptyDataFrame
+    bootstrapDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL)
+      .option(HoodieWriteConfig.SOURCE_BASE_PATH_PROP, srcPath)
+      .option("hoodie.bootstrap.recordkey.columns", "_row_key")
+      .mode(SaveMode.Overwrite)
+      .save(basePath)
+
+    // Read bootstrapped table and verify count
+    var hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+
+    // Perform upsert
+    val updateTimestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecordsUpdate = 10
+    val updateDF = HoodieTestDataGenerator.generateTestRawTripDataset(updateTimestamp, numRecordsUpdate, List(), jsc,
+      spark.sqlContext)
+
+    updateDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option("hoodie.upsert.shuffle.parallelism", "4")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.UPSERT_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY, DataSourceWriteOptions.COW_STORAGE_TYPE_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(DataSourceWriteOptions.KEYGENERATOR_CLASS_OPT_KEY, "org.apache.hudi.keygen.NonpartitionedKeyGenerator")
+      .mode(SaveMode.Append)
+      .save(basePath)
+
+    // Read table after upsert and verify count
+    hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+    assertEquals(numRecordsUpdate, hoodieROViewDF1.filter(s"timestamp == $updateTimestamp").count())
+  }
+
+  @Test def testMetaBootstrapCOWPartitioned(): Unit = {
+    val timestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecords = 100
+    val partitionPaths = List("2020-04-01", "2020-04-02", "2020-04-03")
+    val jsc = JavaSparkContext.fromSparkContext(spark.sparkContext)
+
+    var sourceDF = HoodieTestDataGenerator.generateTestRawTripDataset(timestamp, numRecords, partitionPaths, jsc,
+      spark.sqlContext)
+    sourceDF = sourceDF.drop("tip_history")
+
+    // Write source data partitioned
+    sourceDF.write
+      .partitionBy("datestr")
+      .format("parquet")
+      .mode(SaveMode.Overwrite)
+      .save(srcPath)
+
+    // Perform bootstrap
+    val bootstrapDF = spark.emptyDataFrame
+    bootstrapDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL)
+      .option(HoodieWriteConfig.SOURCE_BASE_PATH_PROP, srcPath)
+      .option("hoodie.bootstrap.recordkey.columns", "_row_key")
+      .mode(SaveMode.Overwrite)
+      .save(basePath)
+
+    // Read bootstrapped table and verify count
+    var hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+
+    // Perform upsert
+    val updateTimestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecordsUpdate = 10
+    var updateDF = HoodieTestDataGenerator.generateTestRawTripDataset(updateTimestamp, numRecordsUpdate, partitionPaths, jsc,
+      spark.sqlContext)
+    updateDF = updateDF.drop("tip_history")
+
+    updateDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option("hoodie.upsert.shuffle.parallelism", "4")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.UPSERT_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY, DataSourceWriteOptions.COW_STORAGE_TYPE_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY, "datestr")
+      // Required because source data is hive style partitioned
+      .option(DataSourceWriteOptions.HIVE_STYLE_PARTITIONING_OPT_KEY, "true")
+      .mode(SaveMode.Append)
+      .save(basePath)
+
+    // Read table after upsert and verify count
+    hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+    assertEquals(numRecordsUpdate, hoodieROViewDF1.filter(s"timestamp == $updateTimestamp").count())
+  }
+
+  @Test def testMetaBootstrapCOWPartitionedFailing(): Unit = {
+    val timestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecords = 100
+    val partitionPaths = List("2020-04-01", "2020-04-02", "2020-04-03")
+    val jsc = JavaSparkContext.fromSparkContext(spark.sparkContext)
+
+    var sourceDF = HoodieTestDataGenerator.generateTestRawTripDataset(timestamp, numRecords, partitionPaths, jsc,
+      spark.sqlContext)
+
+    // Write source data partitioned
+    sourceDF.write
+      .partitionBy("datestr")
+      .format("parquet")
+      .mode(SaveMode.Overwrite)
+      .save(srcPath)
+
+    // Perform bootstrap
+    val bootstrapDF = spark.emptyDataFrame
+    bootstrapDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL)
+      .option(HoodieWriteConfig.SOURCE_BASE_PATH_PROP, srcPath)
+      .option("hoodie.bootstrap.recordkey.columns", "_row_key")
+      .mode(SaveMode.Overwrite)
+      .save(basePath)
+
+    // Read bootstrapped table and verify count
+    var hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+
+    // Perform upsert
+    val updateTimestamp = new java.lang.Double(Instant.now.toEpochMilli).longValue
+    val numRecordsUpdate = 10
+    var updateDF = HoodieTestDataGenerator.generateTestRawTripDataset(updateTimestamp, numRecordsUpdate, partitionPaths, jsc,
+      spark.sqlContext)
+
+    updateDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option("hoodie.upsert.shuffle.parallelism", "4")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.UPSERT_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY, DataSourceWriteOptions.COW_STORAGE_TYPE_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY, "datestr")
+      // Required because source data is hive style partitioned
+      .option(DataSourceWriteOptions.HIVE_STYLE_PARTITIONING_OPT_KEY, "true")
+      .mode(SaveMode.Append)
+      .save(basePath)
+
+    // Read table after upsert and verify count
+    hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+    assertEquals(numRecordsUpdate, hoodieROViewDF1.filter(s"timestamp == $updateTimestamp").count())
   }
 
   @Test def testCopyOnWriteStorage() {
