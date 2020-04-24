@@ -52,6 +52,10 @@ public class TestHiveSyncTool {
     return Stream.of(false, true);
   }
 
+  private static Iterable<Object[]> useJdbcAndSchemaFromCommitMetadata() {
+    return Arrays.asList(new Object[][] { { true, true }, { true, false }, { false, true }, { false, false } });
+  }
+
   @BeforeEach
   public void setUp() throws IOException, InterruptedException {
     TestUtil.setUp();
@@ -146,11 +150,11 @@ public class TestHiveSyncTool {
   }
 
   @ParameterizedTest
-  @MethodSource("useJdbc")
-  public void testBasicSync(boolean useJdbc) throws Exception {
+  @MethodSource({"useJdbcAndSchemaFromCommitMetadata"})
+  public void testBasicSync(boolean useJdbc, boolean useSchemaFromCommitMetadata) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String instantTime = "100";
-    TestUtil.createCOWTable(instantTime, 5);
+    TestUtil.createCOWTable(instantTime, 5, useSchemaFromCommitMetadata);
     HoodieHiveClient hiveClient =
         new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     assertFalse(hiveClient.doesTableExist(TestUtil.hiveSyncConfig.tableName),
@@ -214,7 +218,7 @@ public class TestHiveSyncTool {
   public void testSyncIncremental(boolean useJdbc) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String commitTime1 = "100";
-    TestUtil.createCOWTable(commitTime1, 5);
+    TestUtil.createCOWTable(commitTime1, 5, true);
     HoodieHiveClient hiveClient =
         new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     // Lets do the sync
@@ -228,7 +232,7 @@ public class TestHiveSyncTool {
     // Now lets create more parititions and these are the only ones which needs to be synced
     DateTime dateTime = DateTime.now().plusDays(6);
     String commitTime2 = "101";
-    TestUtil.addCOWPartitions(1, true, dateTime, commitTime2);
+    TestUtil.addCOWPartitions(1, true, true, dateTime, commitTime2);
 
     // Lets do the sync
     hiveClient = new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
@@ -253,7 +257,7 @@ public class TestHiveSyncTool {
   public void testSyncIncrementalWithSchemaEvolution(boolean useJdbc) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String commitTime1 = "100";
-    TestUtil.createCOWTable(commitTime1, 5);
+    TestUtil.createCOWTable(commitTime1, 5, true);
     HoodieHiveClient hiveClient =
         new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     // Lets do the sync
@@ -265,7 +269,7 @@ public class TestHiveSyncTool {
     // Now lets create more parititions and these are the only ones which needs to be synced
     DateTime dateTime = DateTime.now().plusDays(6);
     String commitTime2 = "101";
-    TestUtil.addCOWPartitions(1, false, dateTime, commitTime2);
+    TestUtil.addCOWPartitions(1, false, true, dateTime, commitTime2);
 
     // Lets do the sync
     tool = new HiveSyncTool(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
@@ -286,12 +290,13 @@ public class TestHiveSyncTool {
   }
 
   @ParameterizedTest
-  @MethodSource("useJdbc")
-  public void testSyncMergeOnRead(boolean useJdbc) throws Exception {
+  @MethodSource("useJdbcAndSchemaFromCommitMetadata")
+  public void testSyncMergeOnRead(boolean useJdbc, boolean useSchemaFromCommitMetadata) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String instantTime = "100";
     String deltaCommitTime = "101";
-    TestUtil.createMORTable(instantTime, deltaCommitTime, 5, true);
+    TestUtil.createMORTable(instantTime, deltaCommitTime, 5, true,
+                            useSchemaFromCommitMetadata);
 
     String roTableName = TestUtil.hiveSyncConfig.tableName + HiveSyncTool.SUFFIX_READ_OPTIMIZED_TABLE;
     HoodieHiveClient hiveClient = new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
@@ -313,8 +318,9 @@ public class TestHiveSyncTool {
     String commitTime2 = "102";
     String deltaCommitTime2 = "103";
 
-    TestUtil.addCOWPartitions(1, true, dateTime, commitTime2);
-    TestUtil.addMORPartitions(1, true, false, dateTime, commitTime2, deltaCommitTime2);
+    TestUtil.addCOWPartitions(1, true, useSchemaFromCommitMetadata, dateTime, commitTime2);
+    TestUtil.addMORPartitions(1, true, false,
+        useSchemaFromCommitMetadata, dateTime, commitTime2, deltaCommitTime2);
     // Lets do the sync
     tool = new HiveSyncTool(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     tool.syncHoodieTable();
@@ -330,13 +336,13 @@ public class TestHiveSyncTool {
   }
 
   @ParameterizedTest
-  @MethodSource("useJdbc")
-  public void testSyncMergeOnReadRT(boolean useJdbc) throws Exception {
+  @MethodSource("useJdbcAndSchemaFromCommitMetadata")
+  public void testSyncMergeOnReadRT(boolean useJdbc, boolean useSchemaFromCommitMetadata) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String instantTime = "100";
     String deltaCommitTime = "101";
     String snapshotTableName = TestUtil.hiveSyncConfig.tableName + HiveSyncTool.SUFFIX_SNAPSHOT_TABLE;
-    TestUtil.createMORTable(instantTime, deltaCommitTime, 5, true);
+    TestUtil.createMORTable(instantTime, deltaCommitTime, 5, true, useSchemaFromCommitMetadata);
     HoodieHiveClient hiveClientRT =
         new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
 
@@ -364,8 +370,8 @@ public class TestHiveSyncTool {
     String commitTime2 = "102";
     String deltaCommitTime2 = "103";
 
-    TestUtil.addCOWPartitions(1, true, dateTime, commitTime2);
-    TestUtil.addMORPartitions(1, true, false, dateTime, commitTime2, deltaCommitTime2);
+    TestUtil.addCOWPartitions(1, true, useSchemaFromCommitMetadata, dateTime, commitTime2);
+    TestUtil.addMORPartitions(1, true, false, useSchemaFromCommitMetadata, dateTime, commitTime2, deltaCommitTime2);
     // Lets do the sync
     tool = new HiveSyncTool(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     tool.syncHoodieTable();
@@ -385,7 +391,7 @@ public class TestHiveSyncTool {
   public void testMultiPartitionKeySync(boolean useJdbc) throws Exception {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String instantTime = "100";
-    TestUtil.createCOWTable(instantTime, 5);
+    TestUtil.createCOWTable(instantTime, 5, true);
 
     HiveSyncConfig hiveSyncConfig = HiveSyncConfig.copy(TestUtil.hiveSyncConfig);
     hiveSyncConfig.partitionValueExtractorClass = MultiPartKeysValueExtractor.class.getCanonicalName();
@@ -416,7 +422,7 @@ public class TestHiveSyncTool {
     TestUtil.hiveSyncConfig.useJdbc = useJdbc;
     String commitTime = "100";
     String snapshotTableName = TestUtil.hiveSyncConfig.tableName + HiveSyncTool.SUFFIX_SNAPSHOT_TABLE;
-    TestUtil.createMORTable(commitTime, "", 5, false);
+    TestUtil.createMORTable(commitTime, "", 5, false, true);
     HoodieHiveClient hiveClientRT =
         new HoodieHiveClient(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
 
@@ -440,7 +446,7 @@ public class TestHiveSyncTool {
     String commitTime2 = "102";
     String deltaCommitTime2 = "103";
 
-    TestUtil.addMORPartitions(1, true, false, dateTime, commitTime2, deltaCommitTime2);
+    TestUtil.addMORPartitions(1, true, false, true, dateTime, commitTime2, deltaCommitTime2);
     // Lets do the sync
     tool = new HiveSyncTool(TestUtil.hiveSyncConfig, TestUtil.getHiveConf(), TestUtil.fileSystem);
     tool.syncHoodieTable();

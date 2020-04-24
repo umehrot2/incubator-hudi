@@ -335,7 +335,7 @@ public class HoodieHiveClient {
    */
   public MessageType getDataSchema() {
     try {
-      return new TableSchemaResolver(metaClient).getDataSchema();
+      return new TableSchemaResolver(metaClient).getTableParquetSchema();
     } catch (Exception e) {
       throw new HoodieHiveSyncException("Failed to read data schema", e);
     }
