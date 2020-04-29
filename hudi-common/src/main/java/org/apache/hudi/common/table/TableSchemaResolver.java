@@ -25,6 +25,7 @@ import org.apache.avro.Schema.Field;
 import org.apache.avro.SchemaCompatibility;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieLogFile;
@@ -145,26 +146,38 @@ public class TableSchemaResolver {
   }
 
   /**
-   * Gets the schema for a hoodie table in Avro format.
+   * Gets full schema (user + metadata) for a hoodie table in Avro format.
    *
    * @return Avro schema for this table
    * @throws Exception
    */
   public Schema getTableAvroSchema() throws Exception {
-    Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata();
+    Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata(true);
     return schemaFromCommitMetadata.isPresent() ? schemaFromCommitMetadata.get() : getTableAvroSchemaFromDataFile();
   }
 
   /**
-   * Gets the schema for a hoodie table in Parquet format.
+   * Gets full schema (user + metadata) for a hoodie table in Parquet format.
    *
    * @return Parquet schema for the table
    * @throws Exception
    */
   public MessageType getTableParquetSchema() throws Exception {
-    Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata();
+    Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata(true);
     return schemaFromCommitMetadata.isPresent() ? convertAvroSchemaToParquet(schemaFromCommitMetadata.get()) :
            getTableParquetSchemaFromDataFile();
+  }
+
+  /**
+   * Gets users data schema for a hoodie table in Avro format.
+   *
+   * @return  Avro user data schema
+   * @throws Exception
+   */
+  public Schema getTableAvroSchemaWithoutMetadataFields() throws Exception {
+    Option<Schema> schemaFromCommitMetadata = getTableSchemaFromCommitMetadata(false);
+    return schemaFromCommitMetadata.isPresent() ? schemaFromCommitMetadata.get() :
+           HoodieAvroUtils.removeMetadataFields(getTableAvroSchemaFromDataFile());
   }
 
   /**
@@ -172,14 +185,22 @@ public class TableSchemaResolver {
    *
    * @return Avro schema for this table
    */
-  private Option<Schema> getTableSchemaFromCommitMetadata() {
+  private Option<Schema> getTableSchemaFromCommitMetadata(boolean includeMetadataFields) {
     try {
       HoodieTimeline timeline = metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants();
       byte[] data = timeline.getInstantDetails(timeline.lastInstant().get()).get();
       HoodieCommitMetadata metadata = HoodieCommitMetadata.fromBytes(data, HoodieCommitMetadata.class);
       String existingSchemaStr = metadata.getMetadata(HoodieCommitMetadata.SCHEMA_KEY);
-      return StringUtils.isNullOrEmpty(existingSchemaStr) ? Option.empty() :
-             Option.of(new Schema.Parser().parse(existingSchemaStr));
+
+      if (StringUtils.isNullOrEmpty(existingSchemaStr)) {
+        return Option.empty();
+      }
+
+      Schema schema = new Schema.Parser().parse(existingSchemaStr);
+      if (includeMetadataFields) {
+        schema = HoodieAvroUtils.addMetadataFields(schema);
+      }
+      return Option.of(schema);
     } catch (Exception e) {
       throw new HoodieException("Failed to read schema from commit metadata", e);
     }
