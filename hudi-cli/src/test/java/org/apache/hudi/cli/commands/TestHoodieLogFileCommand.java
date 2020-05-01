@@ -87,7 +87,7 @@ public class TestHoodieLogFileCommand extends AbstractShellIntegrationTest {
     partitionPath = tablePath + File.separator + HoodieTestCommitMetadataGenerator.DEFAULT_FIRST_PARTITION_PATH;
     new TableCommand().createTable(
         tablePath, tableName, HoodieTableType.MERGE_ON_READ.name(),
-        "", TimelineLayoutVersion.VERSION_1, "org.apache.hudi.common.model.HoodieAvroPayload");
+        "", TimelineLayoutVersion.VERSION_1, "org.apache.hudi.common.model.HoodieAvroPayload", null);
 
     Files.createDirectories(Paths.get(partitionPath));
 

@@ -22,6 +22,7 @@ import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieFileStatus;
 import org.apache.hudi.common.bootstrap.FileStatusUtils;
 import org.apache.hudi.common.util.ParquetUtils;
+import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -49,7 +50,7 @@ public class BootstrapSourceSchemaProvider {
    * @return Avro Schema
    */
   public final Schema getBootstrapSchema(JavaSparkContext jsc, List<Pair<String, List<HoodieFileStatus>>> partitions) {
-    if (bootstrapConfig.getSchema() != null) {
+    if (!StringUtils.isNullOrEmpty(bootstrapConfig.getSchema())) {
       // Use schema specified by user if set
       Schema userSchema = Schema.parse(bootstrapConfig.getSchema());
       if (!HoodieAvroUtils.getNullSchema().equals(userSchema)) {

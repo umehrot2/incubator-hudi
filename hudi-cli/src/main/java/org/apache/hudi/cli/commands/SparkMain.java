@@ -54,7 +54,8 @@ public class SparkMain {
    * Commands.
    */
   enum SparkCommand {
-    ROLLBACK, DEDUPLICATE, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, IMPORT, UPSERT, COMPACT_SCHEDULE, COMPACT_RUN, COMPACT_UNSCHEDULE_PLAN, COMPACT_UNSCHEDULE_FILE, COMPACT_VALIDATE, COMPACT_REPAIR, CLEAN
+    BOOTSTRAP, ROLLBACK, DEDUPLICATE, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, IMPORT, UPSERT, COMPACT_SCHEDULE, COMPACT_RUN,
+    COMPACT_UNSCHEDULE_PLAN, COMPACT_UNSCHEDULE_FILE, COMPACT_VALIDATE, COMPACT_REPAIR, CLEAN
   }
 
   public static void main(String[] args) throws Exception {
@@ -68,6 +69,10 @@ public class SparkMain {
         : SparkUtil.initJavaSparkConf("hoodie-cli-" + command);
     int returnCode = 0;
     switch (cmd) {
+      case BOOTSTRAP:
+        assert (args.length == 8);
+        returnCode = doBootstrap(jsc, args[1], args[2], args[3], args[4], Integer.parseInt(args[5]), args[6], args[7]);
+        break;
       case ROLLBACK:
         assert (args.length == 3);
         returnCode = rollback(jsc, args[1], args[2]);
@@ -267,6 +272,21 @@ public class SparkMain {
     DedupeSparkJob job = new DedupeSparkJob(basePath, duplicatedPartitionPath, repairedOutputPath, new SQLContext(jsc),
         FSUtils.getFs(basePath, jsc.hadoopConfiguration()));
     job.fixDuplicates(true);
+    return 0;
+  }
+
+  private static int doBootstrap(JavaSparkContext jsc, String tableName, String basePath, String sourcePath, String recordKeyCols, int parallelism, String selectorClass, String schema) {
+    HoodieWriteConfig config = HoodieWriteConfig.newBuilder()
+        .forTable(tableName)
+        .withPath(basePath)
+        .withAutoCommit(true)
+        .withSchema(schema)
+        .withBootstrapSourceBasePath(sourcePath)
+        .withBootstrapRecordKeyColumns(recordKeyCols)
+        .withBootstrapParallelism(parallelism)
+        .withBootstrapModeSelector(selectorClass).build();
+    HoodieWriteClient client = new HoodieWriteClient(jsc, config, false);
+    client.bootstrap(org.apache.hudi.common.util.Option.empty());
     return 0;
   }
 

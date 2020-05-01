@@ -88,7 +88,9 @@ public class TableCommand implements CommandMarker {
       @CliOption(key = {"archiveLogFolder"}, help = "Folder Name for storing archived timeline") String archiveFolder,
       @CliOption(key = {"layoutVersion"}, help = "Specific Layout Version to use") Integer layoutVersion,
       @CliOption(key = {"payloadClass"}, unspecifiedDefaultValue = "org.apache.hudi.common.model.HoodieAvroPayload",
-          help = "Payload Class") final String payloadClass)
+          help = "Payload Class") final String payloadClass,
+      @CliOption(key = {"bootstrapIndexClass"}, unspecifiedDefaultValue = "org.apache.hudi.common.bootstrap.index.HFileBasedBootstrapIndex",
+          help = "Bootstrap Index class") final String bootstrapIndexClass)
       throws IOException {
 
     boolean initialized = HoodieCLI.initConf();
@@ -109,7 +111,7 @@ public class TableCommand implements CommandMarker {
 
     final HoodieTableType tableType = HoodieTableType.valueOf(tableTypeStr);
     HoodieTableMetaClient.initTableType(HoodieCLI.conf, path, tableType, name, archiveFolder,
-        payloadClass, layoutVersion);
+        payloadClass, layoutVersion, bootstrapIndexClass);
 
     // Now connect to ensure loading works
     return connect(path, layoutVersion, false, 0, 0, 0);

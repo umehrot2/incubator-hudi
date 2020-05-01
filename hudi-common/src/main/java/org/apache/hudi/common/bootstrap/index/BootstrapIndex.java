@@ -73,7 +73,7 @@ public abstract class BootstrapIndex implements Serializable {
   /**
    * Check if bootstrap Index is present and ensures readable.
    */
-  protected abstract boolean checkIndex();
+  public abstract boolean checkIndex();
 
   /**
    * Bootstrap Index Reader Interface.

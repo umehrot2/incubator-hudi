@@ -338,6 +338,13 @@ public class HoodieTableMetaClient implements Serializable {
   public static HoodieTableMetaClient initTableType(Configuration hadoopConf, String basePath,
       HoodieTableType tableType, String tableName, String archiveLogFolder, String payloadClassName,
       Integer timelineLayoutVersion) throws IOException {
+    return initTableType(hadoopConf, basePath, tableType, tableName, archiveLogFolder, payloadClassName, timelineLayoutVersion, null);
+  }
+
+  public static HoodieTableMetaClient initTableType(Configuration hadoopConf, String basePath,
+      HoodieTableType tableType, String tableName, String archiveLogFolder, String payloadClassName,
+      Integer timelineLayoutVersion, String bootstrapIndexClassName) throws IOException {
+
     Properties properties = new Properties();
     properties.setProperty(HoodieTableConfig.HOODIE_TABLE_NAME_PROP_NAME, tableName);
     properties.setProperty(HoodieTableConfig.HOODIE_TABLE_TYPE_PROP_NAME, tableType.name());
@@ -351,6 +358,10 @@ public class HoodieTableMetaClient implements Serializable {
 
     if (null != timelineLayoutVersion) {
       properties.put(HoodieTableConfig.HOODIE_TIMELINE_LAYOUT_VERSION, String.valueOf(timelineLayoutVersion));
+    }
+
+    if (null != bootstrapIndexClassName) {
+      properties.put(HoodieTableConfig.HOODIE_BOOTSTRAP_INDEX_CLASS_PROP_NAME, bootstrapIndexClassName);
     }
     return HoodieTableMetaClient.initTableAndGetMetaClient(hadoopConf, basePath, properties);
   }
