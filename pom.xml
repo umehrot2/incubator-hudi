@@ -79,6 +79,7 @@
 
     <java.version>1.8</java.version>
     <fasterxml.version>2.6.7</fasterxml.version>
+    <fasterxml.databind.version>2.6.7.3</fasterxml.databind.version>
     <kafka.version>2.0.0</kafka.version>
     <glassfish.version>2.17</glassfish.version>
     <parquet.version>1.10.1</parquet.version>
@@ -429,7 +430,7 @@
       <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
-        <version>${fasterxml.version}.1</version>
+        <version>${fasterxml.databind.version}</version>
       </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson.datatype</groupId>
