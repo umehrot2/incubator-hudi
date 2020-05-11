@@ -36,7 +36,6 @@ import scala.collection.JavaConverters._
 
 class HudiBootstrapRelation(@transient val _sqlContext: SQLContext,
                             val userSchema: StructType,
-                            val path: String,
                             val globPaths: Seq[Path],
                             val metaClient: HoodieTableMetaClient,
                             val optParams: Map[String, String]) extends BaseRelation

@@ -50,6 +50,8 @@ object DataSourceReadOptions {
   val QUERY_TYPE_INCREMENTAL_OPT_VAL = "incremental"
   val DEFAULT_QUERY_TYPE_OPT_VAL: String = QUERY_TYPE_SNAPSHOT_OPT_VAL
 
+  val READ_PATHS_OPT_KEY = "hoodie.datasource.read.paths"
+
   @Deprecated
   val VIEW_TYPE_OPT_KEY = "hoodie.datasource.view.type"
   @Deprecated
