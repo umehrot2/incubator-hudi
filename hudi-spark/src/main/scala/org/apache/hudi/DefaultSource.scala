@@ -60,23 +60,29 @@ class DefaultSource extends RelationProvider
     val parameters = Map(QUERY_TYPE_OPT_KEY -> DEFAULT_QUERY_TYPE_OPT_VAL) ++ translateViewTypesToQueryTypes(optParams)
 
     val path = parameters.get("path")
-    if (path.isEmpty) {
-      throw new HoodieException("'path' must be specified.")
-    }
 
     if (parameters(QUERY_TYPE_OPT_KEY).equals(QUERY_TYPE_SNAPSHOT_OPT_VAL)) {
+      val readPathsStr = parameters.get(DataSourceReadOptions.READ_PATHS_OPT_KEY)
+      if (path.isEmpty && readPathsStr.isEmpty) {
+        throw new HoodieException(s"'path' or '$READ_PATHS_OPT_KEY' or both must be specified.")
+      }
 
-      val fs = FSUtils.getFs(path.get, sqlContext.sparkContext.hadoopConfiguration)
-      val globPaths = checkAndGlobPathIfNecessary(path.get, fs)
+      val readPaths = readPathsStr.map(p => p.split(",").toSeq).getOrElse(Seq())
+      val allPaths = path.map(p => Seq(p)).getOrElse(Seq()) ++ readPaths
+
+      val fs = FSUtils.getFs(allPaths.head, sqlContext.sparkContext.hadoopConfiguration)
+      val globPaths = checkAndGlobPathIfNecessary(allPaths, fs)
+
       val tablePath = DataSourceUtils.getTablePath(fs, globPaths.toArray)
-      log.info("Obtained hudi table path => " + tablePath)
+      log.info("Obtained hudi table path: " + tablePath)
 
       val metaClient = new HoodieTableMetaClient(fs.getConf, tablePath)
       val bootstrapIndex = BootstrapIndex.getBootstrapIndex(metaClient)
-      log.info("Bootstrap Index Available => " + bootstrapIndex.isIndexAvailable)
+      log.info("Bootstrap Index Available: " + bootstrapIndex.isIndexAvailable)
 
       if (bootstrapIndex.isIndexAvailable) {
-        new HudiBootstrapRelation(sqlContext, schema, path.get, globPaths, metaClient, optParams)
+        // For bootstrapped tables, use our custom Spark relation for querying
+        new HudiBootstrapRelation(sqlContext, schema, globPaths, metaClient, optParams)
       } else {
         // this is just effectively RO view only, where `path` can contain a mix of
         // non-hoodie/hoodie path files. set the path filter up
@@ -91,12 +97,17 @@ class DefaultSource extends RelationProvider
         // simply return as a regular parquet relation
         DataSource.apply(
           sparkSession = sqlContext.sparkSession,
+          paths = readPaths,
           userSpecifiedSchema = Option(schema),
           className = "parquet",
           options = parameters)
           .resolveRelation()
       }
     } else if (parameters(QUERY_TYPE_OPT_KEY).equals(QUERY_TYPE_INCREMENTAL_OPT_VAL)) {
+      if (path.isEmpty) {
+        throw new HoodieException("'path' must be specified for incremental query.")
+      }
+
       new IncrementalRelation(sqlContext, path.get, optParams, schema)
     } else {
       throw new HoodieException("Invalid query type :" + parameters(QUERY_TYPE_OPT_KEY))
@@ -147,11 +158,12 @@ class DefaultSource extends RelationProvider
       outputMode)
   }
 
-  private def checkAndGlobPathIfNecessary(path: String, fs: FileSystem): Seq[Path] = {
-    val qualified = new Path(path).makeQualified(fs.getUri, fs.getWorkingDirectory)
-    val globPath = SparkHadoopUtil.get.globPathIfNecessary(fs, qualified)
-    log.info("Globbed paths => " + globPath)
-    globPath
+  private def checkAndGlobPathIfNecessary(paths: Seq[String], fs: FileSystem): Seq[Path] = {
+    paths.flatMap(path => {
+      val qualified = new Path(path).makeQualified(fs.getUri, fs.getWorkingDirectory)
+      val globPaths = SparkHadoopUtil.get.globPathIfNecessary(fs, qualified)
+      globPaths
+    })
   }
 
   override def shortName(): String = "hudi"
