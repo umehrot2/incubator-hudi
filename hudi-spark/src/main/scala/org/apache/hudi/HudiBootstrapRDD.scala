@@ -72,8 +72,8 @@ class HudiBootstrapRDD(@transient spark: SparkSession,
   }
 
   def mergeInternalRow(skeletonRow: InternalRow, dataRow: InternalRow): InternalRow = {
-    val skeletonArr  = skeletonRow.toSeq(skeletonSchema)
-    val dataArr = dataRow.toSeq(dataSchema)
+    val skeletonArr  = skeletonRow.copy().toSeq(skeletonSchema)
+    val dataArr = dataRow.copy().toSeq(dataSchema)
     // We need to return it in the order requested
     val mergedArr = requiredColumns.map(col => {
       if (skeletonSchema.fieldNames.contains(col)) {
