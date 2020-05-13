@@ -75,6 +75,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hudi.table.action.commit.CommitActionExecutor;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.parquet.avro.AvroParquetReader;
@@ -96,17 +97,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class BootstrapActionExecutor<T extends HoodieRecordPayload<T>>
+public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
     extends BaseCommitActionExecutor<T, HoodieBootstrapWriteMetadata> {
 
-  private static final Logger LOG = LogManager.getLogger(BootstrapActionExecutor.class);
-  private String bootstrapSchema = null;
+  private static final Logger LOG = LogManager.getLogger(BootstrapCommitActionExecutor.class);
+  protected String bootstrapSchema = null;
 
-  public BootstrapActionExecutor(JavaSparkContext jsc, HoodieWriteConfig config, HoodieTable<?> table) {
+  public BootstrapCommitActionExecutor(JavaSparkContext jsc, HoodieWriteConfig config, HoodieTable<?> table,
+      Option<Map<String, String>> extraMetadata) {
     super(jsc, new HoodieWriteConfig.Builder().withProps(config.getProps())
         .withAutoCommit(true).withWriteStatusClass(BootstrapWriteStatus.class)
         .withBulkInsertParallelism(config.getBootstrapParallelism())
-        .build(), table, HoodieTimeline.METADATA_BOOTSTRAP_INSTANT_TS, WriteOperationType.BOOTSTRAP);
+        .build(), table, HoodieTimeline.METADATA_BOOTSTRAP_INSTANT_TS, WriteOperationType.BOOTSTRAP,
+        extraMetadata);
   }
 
   private void checkArguments() {
@@ -220,9 +223,13 @@ public class BootstrapActionExecutor<T extends HoodieRecordPayload<T>>
         HoodieTimeline.FULL_BOOTSTRAP_INSTANT_TS);
     table.getActiveTimeline().createNewInstant(requested);
     // Setup correct schema and run bulk insert.
+    return getBulkInsertActionExecutor(inputRecordsRDD).execute();
+  }
+
+  protected CommitActionExecutor<T> getBulkInsertActionExecutor(JavaRDD<HoodieRecord> inputRecordsRDD) {
     return new BulkInsertCommitActionExecutor(jsc, new HoodieWriteConfig.Builder().withProps(config.getProps())
         .withSchema(bootstrapSchema).build(), table, HoodieTimeline.FULL_BOOTSTRAP_INSTANT_TS,
-        inputRecordsRDD, Option.empty()).execute();
+        inputRecordsRDD, extraMetadata);
   }
 
   private BootstrapWriteStatus handleMetadataBootstrap(String srcPartitionPath, String partitionPath,

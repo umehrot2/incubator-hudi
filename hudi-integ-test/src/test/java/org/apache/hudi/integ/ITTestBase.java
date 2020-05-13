@@ -268,7 +268,8 @@ public abstract class ITTestBase {
       saveUpLogs();
     }
 
-    assertEquals(times, count, "Did not find output the expected number of times");
+    assertEquals(times, count, "Did not find output the expected number of times. stdOutSingleSpaced="
+        + stdOutSingleSpaced);
   }
 
   public class TestExecStartResultCallback extends ExecStartResultCallback {

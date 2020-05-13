@@ -39,6 +39,7 @@ public class HoodieColumnStichingRecordReader implements RecordReader<NullWritab
   private final int numLeftColumns;
   private final int numRightColumns;
   private final ArrayWritable values;
+  private final boolean validate;
 
   public HoodieColumnStichingRecordReader(RecordReader<NullWritable, ArrayWritable> left,
       int numLeftColumns, RecordReader<NullWritable, ArrayWritable> right, int numRightColumns, boolean validate) {
@@ -78,7 +79,7 @@ public class HoodieColumnStichingRecordReader implements RecordReader<NullWritab
     for (int j = numLeftColumns; j < right.get().length; j++) {
       value.get()[j] = right.get()[j];
     }
-    return hasMoreOnLeft;
+    return hasMoreOnLeft && hasMoreOnRight;
   }
 
   @Override

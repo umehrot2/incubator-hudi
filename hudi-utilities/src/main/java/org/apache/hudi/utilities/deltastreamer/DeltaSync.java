@@ -75,6 +75,8 @@ import java.util.stream.Collectors;
 
 import scala.collection.JavaConversions;
 
+import static org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.CHECKPOINT_KEY;
+import static org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer.CHECKPOINT_RESET_KEY;
 import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_NAMESPACE;
 import static org.apache.hudi.utilities.schema.RowBasedSchemaProvider.HOODIE_RECORD_STRUCT_NAME;
 
@@ -85,8 +87,6 @@ public class DeltaSync implements Serializable {
 
   private static final long serialVersionUID = 1L;
   private static final Logger LOG = LogManager.getLogger(DeltaSync.class);
-  public static final String CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
-  public static final String CHECKPOINT_RESET_KEY = "deltastreamer.checkpoint.reset_key";
 
   /**
    * Delta Sync Config.
@@ -260,7 +260,8 @@ public class DeltaSync implements Serializable {
           resumeCheckpointStr = Option.of(cfg.checkpoint);
         } else if (commitMetadata.getMetadata(CHECKPOINT_KEY) != null) {
           resumeCheckpointStr = Option.of(commitMetadata.getMetadata(CHECKPOINT_KEY));
-        } else {
+        } else if (HoodieTimeline.compareTimestamps(HoodieTimeline.FULL_BOOTSTRAP_INSTANT_TS,
+            HoodieTimeline.LESSER_THAN, lastCommit.get().getTimestamp())) {
           throw new HoodieDeltaStreamerException(
               "Unable to find previous checkpoint. Please double check if this table "
                   + "was indeed built via delta streamer. Last Commit :" + lastCommit + ", Instants :"

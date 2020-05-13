@@ -18,7 +18,7 @@
 
 package org.apache.hudi.utilities.deltastreamer;
 
-import org.apache.hadoop.hive.conf.HiveConf;
+import java.util.HashMap;
 import org.apache.hudi.DataSourceUtils;
 import org.apache.hudi.DataSourceWriteOptions;
 import org.apache.hudi.client.HoodieWriteClient;
@@ -55,6 +55,7 @@ import com.beust.jcommander.ParameterException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -89,13 +90,14 @@ public class HoodieDeltaStreamer implements Serializable {
   private static final long serialVersionUID = 1L;
   private static final Logger LOG = LogManager.getLogger(HoodieDeltaStreamer.class);
 
-  public static String CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
+  public static final String CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
+  public static final String CHECKPOINT_RESET_KEY = "deltastreamer.checkpoint.reset_key";
 
   private final transient Config cfg;
 
   private final TypedProperties properties;
 
-  private transient DeltaSyncService deltaSyncService;
+  private transient Option<DeltaSyncService> deltaSyncService;
 
   private final Option<BootstrapExecutor> bootstrapExecutor;
 
@@ -114,22 +116,27 @@ public class HoodieDeltaStreamer implements Serializable {
   }
 
   public HoodieDeltaStreamer(Config cfg, JavaSparkContext jssc, FileSystem fs, Configuration conf,
-                             TypedProperties properties) throws IOException {
+                             TypedProperties props) throws IOException {
+    // Resolving the properties first in a consistent way
+    this.properties = props != null ? props : UtilHelpers.readConfig(
+        FSUtils.getFs(cfg.propsFilePath, jssc.hadoopConfiguration()),
+        new Path(cfg.propsFilePath), cfg.configs).getConfig();
+
     if (cfg.initialCheckpointProvider != null && cfg.checkpoint == null) {
       InitialCheckPointProvider checkPointProvider =
-          UtilHelpers.createInitialCheckpointProvider(cfg.initialCheckpointProvider, properties);
+          UtilHelpers.createInitialCheckpointProvider(cfg.initialCheckpointProvider, this.properties);
       checkPointProvider.init(conf);
       cfg.checkpoint = checkPointProvider.getCheckpoint();
     }
     this.cfg = cfg;
-    this.deltaSyncService = new DeltaSyncService(cfg, jssc, fs, conf, properties);
-    this.properties = properties;
     this.bootstrapExecutor = Option.ofNullable(
-        cfg.runBootstrap ? new BootstrapExecutor(cfg, jssc, fs, conf, properties) : null);
+        cfg.runBootstrap ? new BootstrapExecutor(cfg, jssc, fs, conf, this.properties) : null);
+    this.deltaSyncService = Option.ofNullable(
+        cfg.runBootstrap ? null : new DeltaSyncService(cfg, jssc, fs, conf, this.properties));
   }
 
   public void shutdownGracefully() {
-    deltaSyncService.shutdown(false);
+    deltaSyncService.ifPresent(ds -> ds.shutdown(false));
   }
 
   /**
@@ -143,18 +150,30 @@ public class HoodieDeltaStreamer implements Serializable {
       bootstrapExecutor.get().execute();
     } else {
       if (cfg.continuousMode) {
-        deltaSyncService.start(this::onDeltaSyncShutdown);
-        deltaSyncService.waitForShutdown();
+        deltaSyncService.ifPresent(ds -> {
+          ds.start(this::onDeltaSyncShutdown);
+          try {
+            ds.waitForShutdown();
+          } catch (Exception e) {
+            throw new HoodieException(e.getMessage(), e);
+          }
+        });
         LOG.info("Delta Sync shutting down");
       } else {
         LOG.info("Delta Streamer running only single round");
         try {
-          deltaSyncService.getDeltaSync().syncOnce();
+          deltaSyncService.ifPresent(ds -> {
+            try {
+              ds.getDeltaSync().syncOnce();
+            } catch (Exception e) {
+              throw new HoodieException(e.getMessage(), e);
+            }
+          });
         } catch (Exception ex) {
           LOG.error("Got error running delta sync once. Shutting down", ex);
           throw ex;
         } finally {
-          deltaSyncService.close();
+          deltaSyncService.ifPresent(DeltaSyncService::close);
           LOG.info("Shut down delta streamer");
         }
       }
@@ -167,7 +186,7 @@ public class HoodieDeltaStreamer implements Serializable {
 
   private boolean onDeltaSyncShutdown(boolean error) {
     LOG.info("DeltaSync shutdown. Closing write client. Error?" + error);
-    deltaSyncService.close();
+    deltaSyncService.ifPresent(DeltaSyncService::close);
     return true;
   }
 
@@ -410,9 +429,7 @@ public class HoodieDeltaStreamer implements Serializable {
       ValidationUtils.checkArgument(!cfg.filterDupes || cfg.operation != Operation.UPSERT,
           "'--filter-dupes' needs to be disabled when '--op' is 'UPSERT' to ensure updates are not missed.");
 
-      this.props = properties != null ? properties : UtilHelpers.readConfig(
-          FSUtils.getFs(cfg.propsFilePath, jssc.hadoopConfiguration()),
-          new Path(cfg.propsFilePath), cfg.configs).getConfig();
+      this.props = properties;
       LOG.info("Creating delta streamer with configs : " + props.toString());
       this.schemaProvider = UtilHelpers.createSchemaProvider(cfg.schemaProviderClassName, props, jssc);
 
@@ -685,9 +702,7 @@ public class HoodieDeltaStreamer implements Serializable {
       this.jssc = jssc;
       this.fs = fs;
       this.configuration = conf;
-      this.props = properties != null ? properties : UtilHelpers.readConfig(
-          FSUtils.getFs(cfg.propsFilePath, jssc.hadoopConfiguration()),
-          new Path(cfg.propsFilePath), cfg.configs).getConfig();
+      this.props = properties;
       // Add more defaults if full bootstrap requested
       this.props.putIfAbsent(DataSourceWriteOptions.PAYLOAD_CLASS_OPT_KEY(),
           DataSourceWriteOptions.DEFAULT_PAYLOAD_OPT_VAL());
@@ -713,8 +728,18 @@ public class HoodieDeltaStreamer implements Serializable {
     public void execute() throws IOException {
       initializeTable();
       HoodieWriteClient bootstrapClient = new HoodieWriteClient(jssc, bootstrapConfig, true);
-      bootstrapClient.bootstrap();
-      syncHive();
+
+      try {
+        HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
+        checkpointCommitMetadata.put(CHECKPOINT_KEY, cfg.checkpoint);
+        if (cfg.checkpoint != null) {
+          checkpointCommitMetadata.put(CHECKPOINT_RESET_KEY, cfg.checkpoint);
+        }
+        bootstrapClient.bootstrap(Option.of(checkpointCommitMetadata));
+        syncHive();
+      } finally {
+        bootstrapClient.close();
+      }
     }
 
     /**

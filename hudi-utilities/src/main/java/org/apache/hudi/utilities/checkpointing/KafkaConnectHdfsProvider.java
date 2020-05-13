@@ -21,9 +21,7 @@ package org.apache.hudi.utilities.checkpointing;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.exception.HoodieException;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 
@@ -42,15 +40,6 @@ public class KafkaConnectHdfsProvider extends InitialCheckPointProvider {
 
   public KafkaConnectHdfsProvider(TypedProperties props) {
     super(props);
-  }
-
-  @Override
-  public void init(Configuration config) throws HoodieException {
-    try {
-      this.fs = FileSystem.get(config);
-    } catch (IOException e) {
-      throw new HoodieException("KafkaConnectHdfsProvider initialization failed");
-    }
   }
 
   /**
