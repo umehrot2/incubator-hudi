@@ -21,10 +21,11 @@ package org.apache.hudi.keygen;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import org.apache.hudi.DataSourceUtils;
 import org.apache.hudi.DataSourceWriteOptions;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.util.KeyGeneratorUtils;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieKeyException;
 
@@ -41,9 +42,6 @@ public class ComplexKeyGenerator extends KeyGenerator {
 
   private static final String DEFAULT_PARTITION_PATH = "default";
   private static final String DEFAULT_PARTITION_PATH_SEPARATOR = "/";
-
-  protected static final String NULL_RECORDKEY_PLACEHOLDER = "__null__";
-  protected static final String EMPTY_RECORDKEY_PLACEHOLDER = "__empty__";
 
   protected final List<String> recordKeyFields;
 
@@ -72,28 +70,10 @@ public class ComplexKeyGenerator extends KeyGenerator {
       throw new HoodieKeyException("Unable to find field names for record key or partition path in cfg");
     }
 
-    boolean keyIsNullEmpty = true;
-    StringBuilder recordKey = new StringBuilder();
-    for (String recordKeyField : recordKeyFields) {
-      String recordKeyValue = DataSourceUtils.getNestedFieldValAsString(record, recordKeyField, true);
-      if (recordKeyValue == null) {
-        recordKey.append(recordKeyField + ":" + NULL_RECORDKEY_PLACEHOLDER + ",");
-      } else if (recordKeyValue.isEmpty()) {
-        recordKey.append(recordKeyField + ":" + EMPTY_RECORDKEY_PLACEHOLDER + ",");
-      } else {
-        recordKey.append(recordKeyField + ":" + recordKeyValue + ",");
-        keyIsNullEmpty = false;
-      }
-    }
-    recordKey.deleteCharAt(recordKey.length() - 1);
-    if (keyIsNullEmpty) {
-      throw new HoodieKeyException("recordKey values: \"" + recordKey + "\" for fields: "
-          + recordKeyFields.toString() + " cannot be entirely null or empty.");
-    }
-
+    String recordKey = KeyGeneratorUtils.getRecordKey(record, recordKeyFields);
     StringBuilder partitionPath = new StringBuilder();
     for (String partitionPathField : partitionPathFields) {
-      String fieldVal = DataSourceUtils.getNestedFieldValAsString(record, partitionPathField, true);
+      String fieldVal = HoodieAvroUtils.getNestedFieldValAsString(record, partitionPathField, true);
       if (fieldVal == null || fieldVal.isEmpty()) {
         partitionPath.append(hiveStylePartitioning ? partitionPathField + "=" + DEFAULT_PARTITION_PATH
                 : DEFAULT_PARTITION_PATH);
@@ -111,7 +91,7 @@ public class ComplexKeyGenerator extends KeyGenerator {
     }
     partitionPath.deleteCharAt(partitionPath.length() - 1);
 
-    return new HoodieKey(recordKey.toString(), partitionPath.toString());
+    return new HoodieKey(recordKey, partitionPath.toString());
   }
 
   public List<String> getRecordKeyFields() {

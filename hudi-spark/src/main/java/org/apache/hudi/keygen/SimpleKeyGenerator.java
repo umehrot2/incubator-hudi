@@ -18,8 +18,8 @@
 
 package org.apache.hudi.keygen;
 
-import org.apache.hudi.DataSourceUtils;
 import org.apache.hudi.DataSourceWriteOptions;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.exception.HoodieException;
@@ -62,12 +62,12 @@ public class SimpleKeyGenerator extends KeyGenerator {
       throw new HoodieKeyException("Unable to find field names for record key or partition path in cfg");
     }
 
-    String recordKey = DataSourceUtils.getNestedFieldValAsString(record, recordKeyField, true);
+    String recordKey = HoodieAvroUtils.getNestedFieldValAsString(record, recordKeyField, true);
     if (recordKey == null || recordKey.isEmpty()) {
       throw new HoodieKeyException("recordKey value: \"" + recordKey + "\" for field: \"" + recordKeyField + "\" cannot be null or empty.");
     }
 
-    String partitionPath = DataSourceUtils.getNestedFieldValAsString(record, partitionPathField, true);
+    String partitionPath = HoodieAvroUtils.getNestedFieldValAsString(record, partitionPathField, true);
     if (partitionPath == null || partitionPath.isEmpty()) {
       partitionPath = DEFAULT_PARTITION_PATH;
     }
