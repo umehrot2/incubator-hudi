@@ -21,6 +21,7 @@ package org.apache.hudi.config;
 import org.apache.hudi.client.HoodieWriteClient;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.client.bootstrap.selector.MetadataOnlyBootstrapModeSelector;
+import org.apache.hudi.client.bootstrap.translator.IdentityBootstrapPathTranslator;
 import org.apache.hudi.common.config.DefaultHoodieConfig;
 import org.apache.hudi.common.fs.ConsistencyGuardConfig;
 import org.apache.hudi.common.model.HoodieCleaningPolicy;
@@ -105,8 +106,12 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   public static final String SOURCE_BASE_PATH_PROP = "hoodie.bootstrap.source.base.path";
   private static final String BOOTSTRAP_MODE_SELECTOR = "hoodie.bootstrap.mode.selector";
   private static final String FULL_BOOTRAP_INPUT_PROVIDER = "hoodie.bootstrap.full.input.provider";
-  // Expect configurations of format col1,col2,col3 ....
   private static final String BOOTSTRAP_KEYGEN_CLASS = "hoodie.bootstrap.keygen.class";
+  private static final String BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS =
+      "hoodie.bootstrap.partitionpath.translator.class";
+  private static final String DEFAULT_BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS =
+      IdentityBootstrapPathTranslator.class.getName();
+
   private static final String BOOTSTRAP_PARALLELISM = "hoodie.bootstrap.parallelism";
   private static final String DEFAULT_BOOTSTRAP_PARALLELISM = "1500";
 
@@ -571,6 +576,10 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     return props.getProperty(BOOTSTRAP_KEYGEN_CLASS);
   }
 
+  public String getBootstrapPartitionPathTranslatorClass() {
+    return props.getProperty(BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS);
+  }
+
   public int getBootstrapParallelism() {
     return Integer.parseInt(props.getProperty(BOOTSTRAP_PARALLELISM));
   }
@@ -756,6 +765,11 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
       return this;
     }
 
+    public Builder withBootstrapPartitionPathTranslatorClass(String partitionPathTranslatorClass) {
+      props.setProperty(BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS, partitionPathTranslatorClass);
+      return this;
+    }
+
     public Builder withBootstrapParallelism(int parallelism) {
       props.setProperty(BOOTSTRAP_PARALLELISM, String.valueOf(parallelism));
       return this;
@@ -816,6 +830,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
           ConsistencyGuardConfig.newBuilder().fromProperties(props).build());
       setDefaultOnCondition(props, !props.containsKey(BOOTSTRAP_PARALLELISM), BOOTSTRAP_PARALLELISM,
           DEFAULT_BOOTSTRAP_PARALLELISM);
+      setDefaultOnCondition(props, !props.containsKey(BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS),
+          BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS, DEFAULT_BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS);
       setDefaultOnCondition(props, !props.containsKey(BOOTSTRAP_MODE_SELECTOR), BOOTSTRAP_MODE_SELECTOR,
           MetadataOnlyBootstrapModeSelector.class.getCanonicalName());
       setDefaultOnCondition(props, !props.containsKey(TIMELINE_LAYOUT_VERSION), TIMELINE_LAYOUT_VERSION,

@@ -18,6 +18,7 @@
 
 package org.apache.hudi.client.bootstrap;
 
+import org.apache.hudi.client.bootstrap.translator.MetadataBootstrapPartitionPathTranslator;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
@@ -32,6 +33,7 @@ public class MetadataBootstrapKeyGenerator implements Serializable {
 
   private final HoodieWriteConfig writeConfig;
   private final KeyGenerator keyGenerator;
+  private final MetadataBootstrapPartitionPathTranslator translator;
 
   public MetadataBootstrapKeyGenerator(HoodieWriteConfig writeConfig) {
     this.writeConfig = writeConfig;
@@ -39,6 +41,8 @@ public class MetadataBootstrapKeyGenerator implements Serializable {
     properties.putAll(writeConfig.getProps());
     this.keyGenerator = (KeyGenerator) ReflectionUtils.loadClass(writeConfig.getBootstrapKeyGeneratorClass(),
         properties);
+    this.translator = (MetadataBootstrapPartitionPathTranslator) ReflectionUtils.loadClass(
+        writeConfig.getBootstrapPartitionPathTranslatorClass(), properties);
   }
 
   /**
@@ -54,5 +58,9 @@ public class MetadataBootstrapKeyGenerator implements Serializable {
    */
   public List<String> getTopLevelRecordKeyFields() {
     return keyGenerator.getTopLevelRecordKeyFields();
+  }
+
+  public String getTranslatedPath(String originalPath) {
+    return translator.getBootstrapTranslatedPath(originalPath);
   }
 }

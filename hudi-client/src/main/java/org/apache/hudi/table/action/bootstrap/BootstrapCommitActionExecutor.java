@@ -63,7 +63,6 @@ import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.TableNotFoundException;
 import org.apache.hudi.execution.SparkBoundedInMemoryExecutor;
 import org.apache.hudi.io.HoodieBootstrapHandle;
-import org.apache.hudi.keygen.KeyGenerator;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.WorkloadProfile;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
@@ -334,11 +333,14 @@ public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
     MetadataBootstrapKeyGenerator keyGenerator = new MetadataBootstrapKeyGenerator(config);
 
     return jsc.parallelize(partitions.stream()
-        .flatMap(p -> p.getValue().stream().map(f -> Pair.of(p.getLeft(), f))).collect(Collectors.toList()),
+        .map(p -> Pair.of(p.getKey(), Pair.of(keyGenerator.getTranslatedPath(p.getKey()), p.getValue())))
+        .flatMap(p -> p.getValue().getValue().stream()
+            .map(f -> Pair.of(p.getLeft(), Pair.of(p.getRight().getLeft(), f))))
+            .collect(Collectors.toList()),
         config.getBootstrapParallelism())
         .map(partitionFsPair -> {
-          return handleMetadataBootstrap(partitionFsPair.getLeft(), partitionFsPair.getLeft(),
-              partitionFsPair.getValue(),keyGenerator);
+          return handleMetadataBootstrap(partitionFsPair.getLeft(), partitionFsPair.getRight().getLeft(),
+              partitionFsPair.getRight().getRight(),keyGenerator);
         });
   }
 
