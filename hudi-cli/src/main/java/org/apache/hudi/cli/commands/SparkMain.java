@@ -282,7 +282,7 @@ public class SparkMain {
         .withAutoCommit(true)
         .withSchema(schema)
         .withBootstrapSourceBasePath(sourcePath)
-        .withBootstrapRecordKeyColumns(recordKeyCols)
+        .withBootstrapKeyGenClass(recordKeyCols)
         .withBootstrapParallelism(parallelism)
         .withBootstrapModeSelector(selectorClass).build();
     HoodieWriteClient client = new HoodieWriteClient(jsc, config, false);

@@ -20,6 +20,7 @@ package org.apache.hudi.bootstrap;
 
 import org.apache.hudi.AvroConversionUtils;
 import org.apache.hudi.DataSourceUtils;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieFileStatus;
 import org.apache.hudi.client.bootstrap.FullBootstrapInputProvider;
 import org.apache.hudi.common.bootstrap.FileStatusUtils;
@@ -65,7 +66,7 @@ public class SparkDataSourceBasedFullBootstrapInputProvider extends FullBootstra
       String namespace = "hoodie." + tableName;
       RDD<GenericRecord> genericRecords = AvroConversionUtils.createRdd(inputDataset, structName, namespace);
       return genericRecords.toJavaRDD().map(gr -> {
-        String orderingVal = DataSourceUtils.getNestedFieldValAsString(
+        String orderingVal = HoodieAvroUtils.getNestedFieldValAsString(
             gr, props.getString("hoodie.datasource.write.precombine.field"), false);
         try {
           return DataSourceUtils.createHoodieRecord(gr,

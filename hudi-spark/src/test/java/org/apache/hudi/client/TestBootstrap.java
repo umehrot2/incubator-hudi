@@ -18,6 +18,7 @@
 
 package org.apache.hudi.client;
 
+import org.apache.hudi.DataSourceWriteOptions;
 import org.apache.hudi.avro.model.HoodieFileStatus;
 import org.apache.hudi.client.bootstrap.BootstrapMode;
 import org.apache.hudi.client.bootstrap.FullBootstrapInputProvider;
@@ -52,6 +53,9 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hudi.index.HoodieIndex.IndexType;
+import org.apache.hudi.keygen.NonpartitionedKeyGenerator;
+import org.apache.hudi.keygen.SimpleKeyGenerator;
 import org.apache.parquet.avro.AvroParquetReader;
 import org.apache.parquet.avro.AvroReadSupport;
 import org.apache.parquet.avro.AvroSchemaConverter;
@@ -158,7 +162,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(NonpartitionedKeyGenerator.class.getCanonicalName())
         .withBootstrapParallelism(3)
         .withAutoCommit(true)
         .withSchema(schema.toString())
@@ -215,11 +219,12 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withBootstrapParallelism(3)
         .withAutoCommit(true)
         .withSchema(schema.toString())
-        .withBootstrapModeSelector(MetadataOnlyBootstrapModeSelector.class.getName()).build();
+        .withBootstrapModeSelector(MetadataOnlyBootstrapModeSelector.class.getName())
+        .build();
     HoodieWriteClient client = new HoodieWriteClient(jsc, config);
     client.bootstrap(Option.empty());
     checkBootstrapResults(totalRecords, schema, HoodieTimeline.METADATA_BOOTSTRAP_INSTANT_TS, true, 1, timestamp,
@@ -273,11 +278,12 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withBootstrapParallelism(3)
         .withSchema(schema.toString())
         .withAutoCommit(true)
         .withBootstrapModeSelector(MetadataOnlyBootstrapModeSelector.class.getName()).build();
+    System.out.println("Config Props :" + config.getProps().getProperty(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY()));
     HoodieWriteClient client = new HoodieWriteClient(jsc, config);
     client.bootstrap(Option.empty());
     checkBootstrapResults(totalRecords, schema, HoodieTimeline.METADATA_BOOTSTRAP_INSTANT_TS, true, 1,
@@ -332,7 +338,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withSchema(schema.toString())
         .withBootstrapParallelism(3)
         .withFullBootstrapInputProvider(FullTestBootstrapInputProvider.class.getName())
@@ -386,7 +392,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withSchema(schema.toString())
         .withBootstrapParallelism(3)
         .withFullBootstrapInputProvider(FullTestBootstrapInputProvider.class.getName())
@@ -445,7 +451,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withBootstrapParallelism(3)
         .withSchema(schema.toString())
         .withFullBootstrapInputProvider(FullTestBootstrapInputProvider.class.getName())
@@ -500,7 +506,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Schema schema = generateNewDataSetAndReturnSchema(timestamp, totalRecords, partitions, srcPath);
     HoodieWriteConfig config = getConfigBuilder(schema.toString())
         .withBootstrapSourceBasePath(srcPath)
-        .withBootstrapRecordKeyColumns("_row_key")
+        .withBootstrapKeyGenClass(SimpleKeyGenerator.class.getCanonicalName())
         .withBootstrapParallelism(3)
         .withSchema(schema.toString())
         .withFullBootstrapInputProvider(FullTestBootstrapInputProvider.class.getName())
@@ -755,5 +761,15 @@ public class TestBootstrap extends TestHoodieClientBase {
       });
       return selections.stream().collect(Collectors.groupingBy(Pair::getKey, mapping(Pair::getValue, toList())));
     }
+  }
+
+  HoodieWriteConfig.Builder getConfigBuilder(String schemaStr) {
+    HoodieWriteConfig.Builder builder = getConfigBuilder(schemaStr, IndexType.BLOOM);
+    TypedProperties properties = new TypedProperties();
+    properties.setProperty(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY(), "_row_key");
+    properties.setProperty(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY(), "datestr");
+    builder = builder.withProps(properties);
+    System.out.println("Builder Props :" + builder.build().getProps().getProperty(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY()));
+    return builder;
   }
 }

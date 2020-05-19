@@ -106,7 +106,7 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   private static final String BOOTSTRAP_MODE_SELECTOR = "hoodie.bootstrap.mode.selector";
   private static final String FULL_BOOTRAP_INPUT_PROVIDER = "hoodie.bootstrap.full.input.provider";
   // Expect configurations of format col1,col2,col3 ....
-  private static final String BOOTSTRAP_RECORDKEY_COLUMNS = "hoodie.bootstrap.recordkey.columns";
+  private static final String BOOTSTRAP_KEYGEN_CLASS = "hoodie.bootstrap.keygen.class";
   private static final String BOOTSTRAP_PARALLELISM = "hoodie.bootstrap.parallelism";
   private static final String DEFAULT_BOOTSTRAP_PARALLELISM = "1500";
 
@@ -567,8 +567,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     return props.getProperty(FULL_BOOTRAP_INPUT_PROVIDER);
   }
 
-  public String getBootstrapRecordKeyColumns() {
-    return props.getProperty(BOOTSTRAP_RECORDKEY_COLUMNS);
+  public String getBootstrapKeyGeneratorClass() {
+    return props.getProperty(BOOTSTRAP_KEYGEN_CLASS);
   }
 
   public int getBootstrapParallelism() {
@@ -751,8 +751,8 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
       return this;
     }
 
-    public Builder withBootstrapRecordKeyColumns(String recordKeyColumnsCsv) {
-      props.setProperty(BOOTSTRAP_RECORDKEY_COLUMNS, recordKeyColumnsCsv);
+    public Builder withBootstrapKeyGenClass(String keyGenClass) {
+      props.setProperty(BOOTSTRAP_KEYGEN_CLASS, keyGenClass);
       return this;
     }
 

@@ -20,6 +20,5 @@ package org.apache.hudi.client.bootstrap;
 
 public enum BootstrapMode {
   FULL_BOOTSTRAP,
-  METADATA_ONLY_BOOTSTRAP,
-  SKIP
+  METADATA_ONLY_BOOTSTRAP
 }

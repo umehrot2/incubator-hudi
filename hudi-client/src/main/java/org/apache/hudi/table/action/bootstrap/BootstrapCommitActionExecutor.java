@@ -63,6 +63,7 @@ import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.TableNotFoundException;
 import org.apache.hudi.execution.SparkBoundedInMemoryExecutor;
 import org.apache.hudi.io.HoodieBootstrapHandle;
+import org.apache.hudi.keygen.KeyGenerator;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.WorkloadProfile;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
@@ -117,7 +118,7 @@ public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
         "Ensure Bootstrap Source Path is set");
     ValidationUtils.checkArgument(config.getBootstrapModeSelectorClass() != null,
         "Ensure Bootstrap Partition Selector is set");
-    ValidationUtils.checkArgument(config.getBootstrapRecordKeyColumns() != null,
+    ValidationUtils.checkArgument(config.getBootstrapKeyGeneratorClass() != null,
         "Ensure bootstrap record key columns are set");
   }
 
@@ -246,7 +247,7 @@ public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
       MessageType parquetSchema = readFooter.getFileMetaData().getSchema();
       avroSchema = new AvroSchemaConverter().convert(parquetSchema);
       Schema recordKeySchema = HoodieAvroUtils.generateProjectionSchema(avroSchema,
-          keyGenerator.getTopLevelKeyColumns());
+          keyGenerator.getTopLevelRecordKeyFields());
       LOG.info("Schema to be used for reading record Keys :" + recordKeySchema);
       AvroReadSupport.setAvroReadSchema(table.getHadoopConf(), recordKeySchema);
       AvroReadSupport.setRequestedProjection(table.getHadoopConf(), recordKeySchema);

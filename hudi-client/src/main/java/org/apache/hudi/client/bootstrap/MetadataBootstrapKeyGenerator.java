@@ -18,45 +18,41 @@
 
 package org.apache.hudi.client.bootstrap;
 
-import org.apache.hudi.avro.HoodieAvroUtils;
+import org.apache.hudi.common.config.TypedProperties;
+import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.hudi.keygen.KeyGenerator;
 
 import org.apache.avro.generic.GenericRecord;
 
 import java.io.Serializable;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class MetadataBootstrapKeyGenerator implements Serializable {
 
   private final HoodieWriteConfig writeConfig;
-  private final List<String> keyColumns;
-  private final List<String> topLevelKeyColumns;
+  private final KeyGenerator keyGenerator;
 
   public MetadataBootstrapKeyGenerator(HoodieWriteConfig writeConfig) {
     this.writeConfig = writeConfig;
-    this.keyColumns = Arrays.asList(writeConfig.getBootstrapRecordKeyColumns().split(","));
-    // For nested columns, pick top level column name
-    this.topLevelKeyColumns = keyColumns.stream().map(k -> {
-      int idx = k.indexOf('.');
-      return idx > 0 ? k.substring(0, idx) : k;
-    }).collect(Collectors.toList());
+    TypedProperties properties = new TypedProperties();
+    properties.putAll(writeConfig.getProps());
+    this.keyGenerator = (KeyGenerator) ReflectionUtils.loadClass(writeConfig.getBootstrapKeyGeneratorClass(),
+        properties);
   }
 
   /**
-   * Returns record key from generic record. The generic record
+   * Returns record key from generic record.
    */
   public String getRecordKey(GenericRecord record) {
-    return keyColumns.stream().map(key -> HoodieAvroUtils.getNestedFieldValAsString(record, key))
-        .collect(Collectors.joining("_"));
+    return keyGenerator.getRecordKey(record);
   }
 
-  public List<String> getKeyColumns() {
-    return keyColumns;
-  }
-
-  public List<String> getTopLevelKeyColumns() {
-    return topLevelKeyColumns;
+  /**
+   * Get Top Level record key columns needed for projection.
+   * @return List of top level columns.
+   */
+  public List<String> getTopLevelRecordKeyFields() {
+    return keyGenerator.getTopLevelRecordKeyFields();
   }
 }
