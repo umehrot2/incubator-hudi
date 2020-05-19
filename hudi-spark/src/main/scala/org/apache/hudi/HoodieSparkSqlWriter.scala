@@ -100,7 +100,7 @@ private[hudi] object HoodieSparkSqlWriter {
       val keyGenerator = DataSourceUtils.createKeyGenerator(toProperties(parameters))
       val genericRecords: RDD[GenericRecord] = AvroConversionUtils.createRdd(df, structName, nameSpace)
       val hoodieAllIncomingRecords = genericRecords.map(gr => {
-        val orderingVal = HoodieAvroUtils.getNestedFieldValAsString(
+        val orderingVal = DataSourceUtils.getNestedFieldValAsString(
           gr, parameters(PRECOMBINE_FIELD_OPT_KEY), false).asInstanceOf[Comparable[_]]
         DataSourceUtils.createHoodieRecord(gr,
           orderingVal, keyGenerator.getKey(gr), parameters(PAYLOAD_CLASS_OPT_KEY))

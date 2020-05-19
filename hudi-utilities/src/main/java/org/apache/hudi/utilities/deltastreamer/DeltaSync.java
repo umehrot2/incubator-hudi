@@ -20,7 +20,6 @@ package org.apache.hudi.utilities.deltastreamer;
 
 import org.apache.hudi.AvroConversionUtils;
 import org.apache.hudi.DataSourceUtils;
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.client.HoodieWriteClient;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.config.TypedProperties;
@@ -325,7 +324,7 @@ public class DeltaSync implements Serializable {
     JavaRDD<GenericRecord> avroRDD = avroRDDOptional.get();
     JavaRDD<HoodieRecord> records = avroRDD.map(gr -> {
       HoodieRecordPayload payload = DataSourceUtils.createPayload(cfg.payloadClassName, gr,
-          (Comparable) HoodieAvroUtils.getNestedFieldVal(gr, cfg.sourceOrderingField, false));
+          (Comparable) DataSourceUtils.getNestedFieldVal(gr, cfg.sourceOrderingField, false));
       return new HoodieRecord<>(keyGenerator.getKey(gr), payload);
     });
 

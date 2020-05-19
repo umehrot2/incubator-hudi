@@ -23,7 +23,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import org.apache.hudi.DataSourceUtils;
 import org.apache.hudi.DataSourceWriteOptions;
-import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.exception.HoodieException;
@@ -99,7 +98,7 @@ public class TimestampBasedKeyGenerator extends SimpleKeyGenerator {
 
   @Override
   public HoodieKey getKey(GenericRecord record) {
-    Object partitionVal = HoodieAvroUtils.getNestedFieldVal(record, partitionPathField, true);
+    Object partitionVal = DataSourceUtils.getNestedFieldVal(record, partitionPathField, true);
     if (partitionVal == null) {
       partitionVal = 1L;
     }
@@ -122,7 +121,7 @@ public class TimestampBasedKeyGenerator extends SimpleKeyGenerator {
       }
       Date timestamp = this.timestampType == TimestampType.EPOCHMILLISECONDS ? new Date(unixTime) : new Date(unixTime * 1000);
 
-      String recordKey = HoodieAvroUtils.getNestedFieldValAsString(record, recordKeyField, true);
+      String recordKey = DataSourceUtils.getNestedFieldValAsString(record, recordKeyField, true);
       if (recordKey == null || recordKey.isEmpty()) {
         throw new HoodieKeyException("recordKey value: \"" + recordKey + "\" for field: \"" + recordKeyField + "\" cannot be null or empty.");
       }

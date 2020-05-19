@@ -18,7 +18,7 @@
 
 package org.apache.hudi.client.bootstrap;
 
-import org.apache.hudi.common.util.KeyGeneratorUtils;
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.config.HoodieWriteConfig;
 
 import org.apache.avro.generic.GenericRecord;
@@ -48,7 +48,8 @@ public class MetadataBootstrapKeyGenerator implements Serializable {
    * Returns record key from generic record. The generic record
    */
   public String getRecordKey(GenericRecord record) {
-    return KeyGeneratorUtils.getRecordKey(record, keyColumns);
+    return keyColumns.stream().map(key -> HoodieAvroUtils.getNestedFieldValAsString(record, key))
+        .collect(Collectors.joining("_"));
   }
 
   public List<String> getKeyColumns() {
