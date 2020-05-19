@@ -18,7 +18,6 @@
 
 package org.apache.hudi.hadoop.realtime;
 
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.mapred.SplitLocationInfo;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.FileSlice;
@@ -281,7 +280,7 @@ public class HoodieParquetRealtimeInputFormat extends HoodieParquetInputFormat i
       // Group-By queries are failing because of Projection Pusher implementation which messes up the columnNames and
       // columnIds in the configuration.
       // TODO: ProjectionPusher needs to be overridden for both vectorized and non-vectorized parquet reading.
-      jobConf2.unset(ConfVars.PLAN.varname);
+      //jobConf2.unset(ConfVars.PLAN.varname);
     }
     return new HoodieRealtimeRecordReader((RealtimeSplit)split, jobConf1,
         super.getRecordReader(split, jobConf2, reporter));

@@ -27,24 +27,30 @@ import java.io.IOException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
 public class HoodieColumnStichingRecordReader implements RecordReader<NullWritable, ArrayWritable> {
 
+  private static final Logger LOG = LogManager.getLogger(HoodieColumnStichingRecordReader.class);
+
   private final RecordReader<NullWritable, ArrayWritable> leftColsRecordReader;
   private final RecordReader<NullWritable, ArrayWritable> rightColsRecordReader;
-
+  private final int numLeftColumns;
+  private final int numRightColumns;
   private final ArrayWritable values;
   private final boolean validate;
 
   public HoodieColumnStichingRecordReader(RecordReader<NullWritable, ArrayWritable> left,
-      RecordReader<NullWritable, ArrayWritable> right, boolean validate) {
+      int numLeftColumns, RecordReader<NullWritable, ArrayWritable> right, int numRightColumns, boolean validate) {
     this.leftColsRecordReader = left;
     this.rightColsRecordReader = right;
     this.validate = validate;
+    this.numLeftColumns = numLeftColumns;
+    this.numRightColumns = numRightColumns;
 
-    ArrayWritable leftW = leftColsRecordReader.createValue();
     ArrayWritable rightW = rightColsRecordReader.createValue();
-    int numColumns = leftW.get().length + rightW.get().length;
+    int numColumns = numLeftColumns + numRightColumns;
     if (rightW.getValueClass() != null) {
       values = new ArrayWritable(rightW.getValueClass(), new Writable[numColumns]);
     } else {
@@ -52,6 +58,7 @@ public class HoodieColumnStichingRecordReader implements RecordReader<NullWritab
           .toArray(new String[0]);
       values = new ArrayWritable(vals);
     }
+    LOG.error("Total ArrayWritable Length :" + values.get().length);
   }
 
   @Override
@@ -64,13 +71,13 @@ public class HoodieColumnStichingRecordReader implements RecordReader<NullWritab
     if (validate) {
       ValidationUtils.checkArgument(hasMoreOnLeft == hasMoreOnRight);
     }
-    int i = 0;
-    for (;i < left.get().length; i++) {
+    LOG.error("Left expected length :" + numLeftColumns + ", Got :" + left.get().length);
+    for (int i = 0; i < numLeftColumns; i++) {
       value.get()[i] = left.get()[i];
     }
-
-    for (int j = 0; j < right.get().length; j++) {
-      value.get()[i++] = right.get()[j];
+    LOG.error("Right expected length :" + numRightColumns + ", Got :" + right.get().length);
+    for (int j = numLeftColumns; j < right.get().length; j++) {
+      value.get()[j] = right.get()[j];
     }
     return hasMoreOnLeft && hasMoreOnRight;
   }

@@ -118,7 +118,7 @@ public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
     ValidationUtils.checkArgument(config.getBootstrapModeSelectorClass() != null,
         "Ensure Bootstrap Partition Selector is set");
     ValidationUtils.checkArgument(config.getBootstrapKeyGeneratorClass() != null,
-        "Ensure bootstrap record key columns are set");
+        "Ensure bootstrap key generator class is set");
   }
 
   @Override

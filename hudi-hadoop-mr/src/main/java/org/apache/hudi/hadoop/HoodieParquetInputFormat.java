@@ -387,7 +387,8 @@ public class HoodieParquetInputFormat extends MapredParquetInputFormat implement
           .collect(Collectors.toList());
       List<Pair<String, String>> colNamesWithTypesForExternal = colNameWithTypes.stream()
               .filter(p -> !HoodieRecord.HOODIE_META_COLUMNS.contains(p.getKey())).collect(Collectors.toList());
-
+      LOG.error("colNameWithTypes.size()" + colNameWithTypes.size());
+      LOG.error("colNameWithTypes =" + colNameWithTypes);
       if (hoodieColsProjected.isEmpty()) {
         JobConf jobConf2 = new JobConf(job);
         HoodieColumnProjectionUtils.setIOColumnNameAndTypes(jobConf2, colNamesWithTypesForExternal);
@@ -412,7 +413,10 @@ public class HoodieParquetInputFormat extends MapredParquetInputFormat implement
         LOG.info("External Column Names Projected :" + externalColNamesWithVirtualCols);
         LOG.info("External Column Ids Projected :" + externalColIdsWithVirtualCols);
         return new HoodieColumnStichingRecordReader(new NullSkeletonRecordReader(),
-            super.getRecordReader(eSplit.getExternalFileSplit(), jobConf2, reporter), false);
+            HoodieRecord.HOODIE_META_COLUMNS.size(),
+            super.getRecordReader(eSplit.getExternalFileSplit(), job, reporter),
+            colNamesWithTypesForExternal.size(),
+            false);
       } else if (externalColsProjected.isEmpty()) {
         return super.getRecordReader(split, job, reporter);
       } else {
@@ -452,8 +456,11 @@ public class HoodieParquetInputFormat extends MapredParquetInputFormat implement
 
         FileSplit rightSplit = eSplit.getExternalFileSplit();
         LOG.info("Generating column stitching reader for " + eSplit.getPath() + " and " + rightSplit.getPath());
-        return new HoodieColumnStichingRecordReader(super.getRecordReader(eSplit, jobConf1, reporter),
-            super.getRecordReader(rightSplit, jobConf2, reporter), true);
+        return new HoodieColumnStichingRecordReader(super.getRecordReader(eSplit, job, reporter),
+            HoodieRecord.HOODIE_META_COLUMNS.size(),
+            super.getRecordReader(rightSplit, job, reporter),
+            colNamesWithTypesForExternal.size(),
+            true);
       }
     }
     if (LOG.isDebugEnabled()) {

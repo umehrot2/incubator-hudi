@@ -18,6 +18,7 @@
 
 package org.apache.hudi.common;
 
+import java.net.URLEncoder;
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.common.fs.FSUtils;
@@ -650,8 +651,8 @@ public class HoodieTestDataGenerator {
     });
     if (isPartitioned) {
       sqlContext.udf().register("partgen",
-          (UDF1<String, String>) (val) -> partitionPaths.get(
-              Integer.parseInt(val.split("_")[1]) % partitionPaths.size()),
+          (UDF1<String, String>) (val) -> URLEncoder.encode(partitionPaths.get(
+              Integer.parseInt(val.split("_")[1]) % partitionPaths.size()), StandardCharsets.UTF_8.toString()),
           DataTypes.StringType);
     }
     JavaRDD rdd = jsc.parallelize(records);

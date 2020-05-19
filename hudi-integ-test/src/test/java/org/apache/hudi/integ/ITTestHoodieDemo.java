@@ -21,6 +21,7 @@ package org.apache.hudi.integ;
 import org.apache.hudi.common.util.CollectionUtils;
 import org.apache.hudi.common.util.collection.Pair;
 
+import org.apache.hudi.keygen.SimpleKeyGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
@@ -159,6 +160,7 @@ public class ITTestHoodieDemo extends ITTestBase {
         + " --hoodie-conf hoodie.bootstrap.recordkey.columns=key"
         + " --hoodie-conf hoodie.deltastreamer.checkpoint.provider.path=" + COW_BASE_PATH
         + " --hoodie-conf hoodie.bootstrap.parallelism=2 "
+        + " --hoodie-conf hoodie.bootstrap.keygen.class=" + SimpleKeyGenerator.class.getName()
         + String.format(HIVE_SYNC_CMD_FMT, "dt", COW_BOOTSTRAPPED_TABLE_NAME),
         "spark-submit --class org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer " + HUDI_UTILITIES_BUNDLE
         + " --table-type MERGE_ON_READ "
@@ -173,6 +175,7 @@ public class ITTestHoodieDemo extends ITTestBase {
         + " --hoodie-conf hoodie.bootstrap.recordkey.columns=key"
         + " --hoodie-conf hoodie.deltastreamer.checkpoint.provider.path=" + COW_BASE_PATH
         + " --hoodie-conf hoodie.bootstrap.parallelism=2 "
+        + " --hoodie-conf hoodie.bootstrap.keygen.class=" + SimpleKeyGenerator.class.getName()
         + String.format(HIVE_SYNC_CMD_FMT, "dt", MOR_BOOTSTRAPPED_TABLE_NAME));
     executeCommandStringsInDocker(ADHOC_1_CONTAINER, bootstrapCmds);
   }

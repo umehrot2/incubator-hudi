@@ -604,6 +604,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Assert.assertEquals(totalRecords, records.size());
     Set<String> seenKeys = new HashSet<>();
     for (GenericRecord r : records) {
+      System.out.println("Record 1 :" + r);
       Assert.assertEquals("Record :" + r, r.get("_row_key").toString(), r.get("_hoodie_record_key").toString());
       Assert.assertEquals("Record :" + r, expROTimestamp, ((DoubleWritable)r.get("timestamp")).get(), 0.1);
       Assert.assertFalse(seenKeys.contains(r.get("_hoodie_record_key").toString()));
@@ -620,6 +621,7 @@ public class TestBootstrap extends TestHoodieClientBase {
         basePath, rtJobConf, rtInputFormat, schema,  HoodieTestDataGenerator.TRIP_HIVE_COLUMN_TYPES);
     Assert.assertEquals(totalRecords, records.size());
     for (GenericRecord r : records) {
+      System.out.println("Record 2 :" + r);
       Assert.assertEquals("Realtime Record :" + r,
           r.get("_row_key").toString(), r.get("_hoodie_record_key").toString());
       Assert.assertEquals("Realtime Record :" + r, expTimestamp, ((DoubleWritable)r.get("timestamp")).get(),0.1);
@@ -638,6 +640,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Assert.assertEquals(totalRecords, records.size());
     seenKeys = new HashSet<>();
     for (GenericRecord r : records) {
+      System.out.println("Record 3 :" + r);
       Assert.assertFalse(seenKeys.contains(r.get("_hoodie_record_key").toString()));
       seenKeys.add(r.get("_hoodie_record_key").toString());
     }
@@ -653,6 +656,7 @@ public class TestBootstrap extends TestHoodieClientBase {
         HoodieRecord.HOODIE_META_COLUMNS);
     Assert.assertEquals(totalRecords, records.size());
     for (GenericRecord r : records) {
+      System.out.println("Record 4 :" + r);
       Assert.assertFalse(seenKeys.contains(r.get("_hoodie_record_key").toString()));
       seenKeys.add(r.get("_hoodie_record_key").toString());
     }
@@ -668,6 +672,7 @@ public class TestBootstrap extends TestHoodieClientBase {
     Assert.assertEquals(totalRecords, records.size());
     seenKeys = new HashSet<>();
     for (GenericRecord r : records) {
+      System.out.println("Record 5 :" + r);
       Assert.assertFalse(seenKeys.contains(r.get("_row_key").toString()));
       seenKeys.add(r.get("_row_key").toString());
     }
@@ -683,6 +688,7 @@ public class TestBootstrap extends TestHoodieClientBase {
         Arrays.asList("_row_key"));
     Assert.assertEquals(totalRecords, records.size());
     for (GenericRecord r : records) {
+      System.out.println("Record 6 :" + r);
       Assert.assertFalse(seenKeys.contains(r.get("_row_key").toString()));
       seenKeys.add(r.get("_row_key").toString());
     }
