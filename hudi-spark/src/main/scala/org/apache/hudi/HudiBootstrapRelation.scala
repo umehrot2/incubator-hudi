@@ -19,9 +19,8 @@
 package org.apache.hudi
 
 import org.apache.hadoop.fs.Path
-import org.apache.hudi.common.fs.FSUtils
 import org.apache.hudi.common.model.{HoodieBaseFile, HoodieRecord}
-import org.apache.hudi.common.table.HoodieTableMetaClient
+import org.apache.hudi.common.table.{HoodieTableMetaClient, TableSchemaResolver}
 import org.apache.hudi.common.table.view.HoodieTableFileSystemView
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -59,12 +58,7 @@ class HudiBootstrapRelation(@transient val _sqlContext: SQLContext,
 
   override val needConversion: Boolean = false
 
-  override def schema: StructType = {
-    if (completeSchema == null) {
-      inferFullSchema()
-    }
-    completeSchema
-  }
+  override def schema: StructType = inferFullSchema()
 
   /**
     * Implementing PrunedScan to support column pruning, by reading only the required columns from the parquet files
@@ -148,41 +142,12 @@ class HudiBootstrapRelation(@transient val _sqlContext: SQLContext,
   }
 
   def inferFullSchema(): StructType = {
-    logInfo("Inferring schema..")
-
-    // We need to infer schema from the external data files and then merge the skeleton schema which is fixed
-    // to get the complete schema
-    val fs = FSUtils.getFs(globPaths.head.toString, _sqlContext.sparkContext.hadoopConfiguration)
-
-    val headFile = fileIndex.files.head
-    if (headFile.getExternalBaseFile.isPresent) {
-      // Get the data schema from external file and merge with skeleton schema
-      val externalFileStatus = fs.listStatus(new Path(headFile.getExternalBaseFile.get().getPath))
-      val inferredDataSchema = new ParquetFileFormat().inferSchema(
-        _sqlContext.sparkSession,
-        optParams,
-        externalFileStatus
-      )
-
-      logInfo("Inferred schema from external file => " + inferredDataSchema.get.toString())
-      dataSchema = inferredDataSchema.get
+    if (completeSchema == null) {
+      logInfo("Inferring schema..")
+      val schemaResolver = new TableSchemaResolver(metaClient)
+      val tableSchema = schemaResolver.getTableAvroSchemaWithoutMetadataFields
+      dataSchema = AvroConversionUtils.convertAvroSchemaToStructType(tableSchema)
       completeSchema = StructType(skeletonSchema.fields ++ dataSchema.fields)
-      logInfo("Data schema => " + dataSchema.toString())
-      logInfo("Complete schema => " + completeSchema.toString())
-    } else {
-      // Get the merged schema from regular file and filter out the skeleton fields to get just data schema
-      val regularFileStatus = Array(headFile.getFileStatus)
-      val inferredDataSchema = new ParquetFileFormat().inferSchema(
-        _sqlContext.sparkSession,
-        optParams,
-        regularFileStatus
-      )
-
-      logInfo("Inferred schema from regular file => " + inferredDataSchema.get.toString())
-      completeSchema = inferredDataSchema.get
-      dataSchema = StructType(completeSchema.filterNot(field => skeletonSchema.fieldNames.contains(field.name)))
-      logInfo("Data schema => " + dataSchema.toString())
-      logInfo("Complete schema => " + completeSchema.toString())
     }
     completeSchema
   }
