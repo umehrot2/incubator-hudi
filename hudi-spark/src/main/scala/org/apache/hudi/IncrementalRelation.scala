@@ -24,7 +24,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.hudi.avro.HoodieAvroUtils
 import org.apache.hudi.common.bootstrap.index.BootstrapIndex
 import org.apache.hudi.common.model.{HoodieCommitMetadata, HoodieRecord, HoodieTableType}
-import org.apache.hudi.common.table.HoodieTableMetaClient
+import org.apache.hudi.common.table.{HoodieTableMetaClient, TableSchemaResolver}
 import org.apache.hudi.common.table.timeline.HoodieTimeline
 import org.apache.hudi.common.util.ParquetUtils
 import org.apache.hudi.config.HoodieWriteConfig
@@ -33,7 +33,7 @@ import org.apache.hudi.table.HoodieTable
 import org.apache.log4j.LogManager
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.sources.{BaseRelation, TableScan}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SQLContext}
 
 import scala.collection.JavaConversions._
@@ -51,6 +51,14 @@ class IncrementalRelation(val sqlContext: SQLContext,
                           val userSchema: StructType) extends BaseRelation with TableScan {
 
   private val log = LogManager.getLogger(classOf[IncrementalRelation])
+
+  val skeletonSchema: StructType = StructType(Seq(
+    StructField(HoodieRecord.COMMIT_TIME_METADATA_FIELD, StringType, nullable = true),
+    StructField(HoodieRecord.COMMIT_SEQNO_METADATA_FIELD, StringType, nullable = true),
+    StructField(HoodieRecord.RECORD_KEY_METADATA_FIELD, StringType, nullable = true),
+    StructField(HoodieRecord.PARTITION_PATH_METADATA_FIELD, StringType, nullable = true),
+    StructField(HoodieRecord.FILENAME_METADATA_FIELD, StringType, nullable = true)
+  ))
 
   val fs = new Path(basePath).getFileSystem(sqlContext.sparkContext.hadoopConfiguration)
   val metaClient = new HoodieTableMetaClient(sqlContext.sparkContext.hadoopConfiguration, basePath, true)
@@ -79,32 +87,11 @@ class IncrementalRelation(val sqlContext: SQLContext,
 
   // use schema from a file produced in the latest instant
   val latestSchema: StructType = {
-    // use last instant if instant range is empty
-    val instant = commitsToReturn.lastOption.getOrElse(lastInstant)
-    val latestMeta = HoodieCommitMetadata
-          .fromBytes(commitTimeline.getInstantDetails(instant).get, classOf[HoodieCommitMetadata])
-
-    val fileGroupIdAndFullPath = latestMeta.getFileGroupIdAndFullPaths(basePath).head
-    var inferredSchema: Schema = null
-
-    if (instant.getTimestamp == HoodieTimeline.METADATA_BOOTSTRAP_INSTANT_TS) {
-      val bootstrapIndex = BootstrapIndex.getBootstrapIndex(metaClient)
-      val mapping = bootstrapIndex.createReader().getSourceFileMappingForFileIds(
-        Lists.newArrayList(fileGroupIdAndFullPath._1))
-
-      if (mapping.isEmpty) {
-        throw new HoodieException(s"No mapping found for ${fileGroupIdAndFullPath._1} in bootstrap index.")
-      }
-
-      val sourceDataFilePath = mapping.head._2.getSourceFileStatus.getPath.getUri
-      val sourceDataSchema = ParquetUtils.readAvroSchema(sqlContext.sparkContext.hadoopConfiguration,
-        new Path(sourceDataFilePath))
-      inferredSchema = HoodieAvroUtils.addMetadataFields(sourceDataSchema)
-    } else {
-      inferredSchema = ParquetUtils.readAvroSchema(sqlContext.sparkContext.hadoopConfiguration,
-        new Path(fileGroupIdAndFullPath._2))
-    }
-    AvroConversionUtils.convertAvroSchemaToStructType(inferredSchema)
+    log.info("Inferring schema..")
+    val schemaResolver = new TableSchemaResolver(metaClient)
+    val tableSchema = schemaResolver.getTableAvroSchemaWithoutMetadataFields
+    val dataSchema = AvroConversionUtils.convertAvroSchemaToStructType(tableSchema)
+    StructType(skeletonSchema.fields ++ dataSchema.fields)
   }
 
   val filters = {

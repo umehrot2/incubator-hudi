@@ -185,7 +185,7 @@ public class TableSchemaResolver {
    *
    * @return Avro schema for this table
    */
-  private Option<Schema> getTableSchemaFromCommitMetadata(boolean includeMetadataFields) {
+  public Option<Schema> getTableSchemaFromCommitMetadata(boolean includeMetadataFields) {
     try {
       HoodieTimeline timeline = metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants();
       byte[] data = timeline.getInstantDetails(timeline.lastInstant().get()).get();
