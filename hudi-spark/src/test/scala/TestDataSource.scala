@@ -15,13 +15,18 @@
  * limitations under the License.
  */
 
+import java.time.Instant
+
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hudi.common.HoodieTestDataGenerator
 import org.apache.hudi.common.fs.FSUtils
+import org.apache.hudi.common.table.timeline.HoodieTimeline
 import org.apache.hudi.config.HoodieWriteConfig
 import org.apache.hudi.{DataSourceReadOptions, DataSourceWriteOptions, HoodieDataSourceHelpers}
+import org.apache.spark.api.java.JavaSparkContext
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.streaming.{OutputMode, ProcessingTime}
 import org.junit.jupiter.api.Assertions.{assertEquals, assertTrue}
 import org.junit.jupiter.api.io.TempDir
@@ -48,6 +53,7 @@ class TestDataSource {
     HoodieWriteConfig.TABLE_NAME -> "hoodie_test"
   )
   var basePath: String = null
+  var srcPath: String = null
   var fs: FileSystem = null
 
   @BeforeEach def initialize(@TempDir tempDir: java.nio.file.Path) {
@@ -57,7 +63,8 @@ class TestDataSource {
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .getOrCreate
     dataGen = new HoodieTestDataGenerator()
-    basePath = tempDir.toAbsolutePath.toString
+    basePath = tempDir.toAbsolutePath.toString + "/base"
+    srcPath = tempDir.toAbsolutePath.toString + "/src"
     fs = FSUtils.getFs(basePath, spark.sparkContext.hadoopConfiguration)
   }
 
@@ -72,6 +79,113 @@ class TestDataSource {
       .save(basePath)
 
     assertTrue(HoodieDataSourceHelpers.hasNewCommits(fs, basePath, "000"))
+  }
+
+  @Test def testFullBootstrapCOWNonHiveStylePartitioned(): Unit = {
+    val timestamp = Instant.now.toEpochMilli
+    val numRecords = 100
+    val partitionPaths = List("2020-04-01", "2020-04-02", "2020-04-03")
+    val jsc = JavaSparkContext.fromSparkContext(spark.sparkContext)
+
+    var sourceDF = HoodieTestDataGenerator.generateTestRawTripDataset(timestamp, numRecords, partitionPaths, jsc,
+      spark.sqlContext)
+    sourceDF = sourceDF.drop("tip_history")
+
+    // Writing data for each partition instead of using partitionBy to avoid hive-style partitioning and hence
+    // have partitioned columns stored in the data file
+    partitionPaths.foreach(partitionPath => {
+      sourceDF
+        .filter(sourceDF("datestr").equalTo(lit(partitionPath)))
+        .write
+        .format("parquet")
+        .mode(SaveMode.Overwrite)
+        .save(srcPath + "/" + partitionPath)
+    })
+
+    // Perform bootstrap
+    val bootstrapDF = spark.emptyDataFrame
+    bootstrapDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.BOOTSTRAP_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY, "datestr")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(HoodieWriteConfig.SOURCE_BASE_PATH_PROP, srcPath)
+      .option(HoodieWriteConfig.BOOTSTRAP_KEYGEN_CLASS, "org.apache.hudi.keygen.SimpleKeyGenerator")
+      .option(HoodieWriteConfig.BOOTSTRAP_MODE_SELECTOR, "org.apache.hudi.client.bootstrap.selector.FullBootstrapModeSelector")
+      .option(HoodieWriteConfig.FULL_BOOTSTRAP_INPUT_PROVIDER,"org.apache.hudi.bootstrap.SparkDataSourceBasedFullBootstrapInputProvider")
+      .mode(SaveMode.Overwrite)
+      .save(basePath)
+
+    val commitInstantTime1: String = HoodieDataSourceHelpers.latestCommit(fs, basePath)
+    assertEquals(HoodieTimeline.FULL_BOOTSTRAP_INSTANT_TS, commitInstantTime1)
+
+    // Read bootstrapped table and verify count
+    val hoodieROViewDF1 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF1.count())
+
+    // Perform upsert
+    val updateTimestamp = Instant.now.toEpochMilli
+    val numRecordsUpdate = 10
+    var updateDF = HoodieTestDataGenerator.generateTestRawTripDataset(updateTimestamp, numRecordsUpdate, partitionPaths, jsc,
+      spark.sqlContext)
+    updateDF = updateDF.drop("tip_history")
+
+    updateDF.write
+      .format("hudi")
+      .option(HoodieWriteConfig.TABLE_NAME, "hoodie_test")
+      .option("hoodie.upsert.shuffle.parallelism", "4")
+      .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.UPSERT_OPERATION_OPT_VAL)
+      .option(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY, DataSourceWriteOptions.COW_STORAGE_TYPE_OPT_VAL)
+      .option(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY, "_row_key")
+      .option(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY, "timestamp")
+      .option(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY, "datestr")
+      .mode(SaveMode.Append)
+      .save(basePath)
+
+    val commitInstantTime2: String = HoodieDataSourceHelpers.latestCommit(fs, basePath)
+    assertEquals(1, HoodieDataSourceHelpers.listCommitsSince(fs, basePath, commitInstantTime1).size())
+
+    // Read table after upsert and verify count
+    val hoodieROViewDF2 = spark.read.format("hudi").load(basePath + "/*")
+    assertEquals(numRecords, hoodieROViewDF2.count())
+    assertEquals(numRecordsUpdate, hoodieROViewDF2.filter(s"timestamp == $updateTimestamp").count())
+
+    // incrementally pull only changes in the bootstrap commit, which would pull all the initial records written
+    // during bootstrap
+    val hoodieIncViewDF1 = spark.read.format("hudi")
+      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
+      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, "000")
+      .option(DataSourceReadOptions.END_INSTANTTIME_OPT_KEY, commitInstantTime1)
+      .load(basePath)
+
+    assertEquals(numRecords, hoodieIncViewDF1.count())
+    var countsPerCommit = hoodieIncViewDF1.groupBy("_hoodie_commit_time").count().collect();
+    assertEquals(1, countsPerCommit.length)
+    assertEquals(commitInstantTime1, countsPerCommit(0).get(0))
+
+    // incrementally pull only changes in the latest commit, which would pull only the updated records in the
+    // latest commit
+    val hoodieIncViewDF2 = spark.read.format("hudi")
+      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
+      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, commitInstantTime1)
+      .load(basePath);
+
+    assertEquals(numRecordsUpdate, hoodieIncViewDF2.count())
+    countsPerCommit = hoodieIncViewDF2.groupBy("_hoodie_commit_time").count().collect();
+    assertEquals(1, countsPerCommit.length)
+    assertEquals(commitInstantTime2, countsPerCommit(0).get(0))
+
+    // pull the latest commit within certain partitions
+    val hoodieIncViewDF3 = spark.read.format("hudi")
+      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
+      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, commitInstantTime1)
+      .option(DataSourceReadOptions.INCR_PATH_GLOB_OPT_KEY, "/2020-04-02/*")
+      .load(basePath)
+
+    assertEquals(hoodieIncViewDF2.filter(col("_hoodie_partition_path").contains("2020-04-02")).count(),
+      hoodieIncViewDF3.count())
   }
 
   @Test def testCopyOnWriteStorage() {

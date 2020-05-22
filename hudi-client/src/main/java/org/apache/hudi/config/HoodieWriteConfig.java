@@ -104,9 +104,9 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   private ConsistencyGuardConfig consistencyGuardConfig;
 
   public static final String SOURCE_BASE_PATH_PROP = "hoodie.bootstrap.source.base.path";
-  private static final String BOOTSTRAP_MODE_SELECTOR = "hoodie.bootstrap.mode.selector";
-  private static final String FULL_BOOTRAP_INPUT_PROVIDER = "hoodie.bootstrap.full.input.provider";
-  private static final String BOOTSTRAP_KEYGEN_CLASS = "hoodie.bootstrap.keygen.class";
+  public static final String BOOTSTRAP_MODE_SELECTOR = "hoodie.bootstrap.mode.selector";
+  public static final String FULL_BOOTSTRAP_INPUT_PROVIDER = "hoodie.bootstrap.full.input.provider";
+  public static final String BOOTSTRAP_KEYGEN_CLASS = "hoodie.bootstrap.keygen.class";
   private static final String BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS =
       "hoodie.bootstrap.partitionpath.translator.class";
   private static final String DEFAULT_BOOTSTRAP_PARTITION_PATH_TRANSLATOR_CLASS =
@@ -569,7 +569,7 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
   }
 
   public String getFullBootstrapInputProvider() {
-    return props.getProperty(FULL_BOOTRAP_INPUT_PROVIDER);
+    return props.getProperty(FULL_BOOTSTRAP_INPUT_PROVIDER);
   }
 
   public String getBootstrapKeyGeneratorClass() {
@@ -756,7 +756,7 @@ public class HoodieWriteConfig extends DefaultHoodieConfig {
     }
 
     public Builder withFullBootstrapInputProvider(String partitionSelectorClass) {
-      props.setProperty(FULL_BOOTRAP_INPUT_PROVIDER, partitionSelectorClass);
+      props.setProperty(FULL_BOOTSTRAP_INPUT_PROVIDER, partitionSelectorClass);
       return this;
     }
 

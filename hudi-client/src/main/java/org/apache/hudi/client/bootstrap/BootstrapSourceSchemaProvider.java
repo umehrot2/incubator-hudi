@@ -20,15 +20,20 @@ package org.apache.hudi.client.bootstrap;
 
 import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.hudi.avro.model.HoodieFileStatus;
+import org.apache.hudi.client.bootstrap.selector.MetadataOnlyBootstrapModeSelector;
 import org.apache.hudi.common.bootstrap.FileStatusUtils;
 import org.apache.hudi.common.util.ParquetUtils;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
+import org.apache.parquet.schema.MessageType;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import org.apache.avro.Schema;
 import org.apache.hadoop.fs.Path;
+import org.apache.spark.sql.avro.SchemaConverters;
+import org.apache.spark.sql.execution.datasources.parquet.ParquetToSparkSchemaConverter;
+import org.apache.spark.sql.types.StructType;
 
 import java.util.List;
 
@@ -69,14 +74,32 @@ public class BootstrapSourceSchemaProvider {
    */
   protected Schema getBootstrapSourceSchema(JavaSparkContext jsc,
       List<Pair<String, List<HoodieFileStatus>>> partitions) {
-    return partitions.stream().flatMap(p -> p.getValue().stream())
-        .map(fs -> {
-          try {
-            Path filePath = FileStatusUtils.toPath(fs.getPath());
-            return ParquetUtils.readAvroSchema(jsc.hadoopConfiguration(), filePath);
-          } catch (Exception ex) {
-            return null;
-          }
-        }).filter(x -> x != null).findAny().get();
+    if (bootstrapConfig.getBootstrapModeSelectorClass().equals(MetadataOnlyBootstrapModeSelector.class.getName())) {
+      return partitions.stream().flatMap(p -> p.getValue().stream()).map(fs -> {
+        try {
+          Path filePath = FileStatusUtils.toPath(fs.getPath());
+          return ParquetUtils.readAvroSchema(jsc.hadoopConfiguration(), filePath);
+        } catch (Exception ex) {
+          return null;
+        }
+      }).filter(x -> x != null).findAny().get();
+    } else {
+      MessageType parquetSchema = partitions.stream().flatMap(p -> p.getValue().stream()).map(fs -> {
+        try {
+          Path filePath = FileStatusUtils.toPath(fs.getPath());
+          return ParquetUtils.readSchema(jsc.hadoopConfiguration(), filePath);
+        } catch (Exception ex) {
+          return null;
+        }
+      }).filter(x -> x != null).findAny().get();
+
+      ParquetToSparkSchemaConverter converter = new ParquetToSparkSchemaConverter(false, true);
+      StructType sparkSchema = converter.convert(parquetSchema);
+      String tableName = bootstrapConfig.getTableName();
+      String structName = tableName + "_record";
+      String recordNamespace = "hoodie." + tableName;
+
+      return SchemaConverters.toAvroType(sparkSchema, false, structName, recordNamespace);
+    }
   }
 }
