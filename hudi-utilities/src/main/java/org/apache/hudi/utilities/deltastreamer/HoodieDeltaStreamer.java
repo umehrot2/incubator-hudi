@@ -165,8 +165,8 @@ public class HoodieDeltaStreamer implements Serializable {
           deltaSyncService.ifPresent(ds -> {
             try {
               ds.getDeltaSync().syncOnce();
-            } catch (Exception e) {
-              throw new HoodieException(e.getMessage(), e);
+            } catch (IOException e) {
+              throw new HoodieIOException(e.getMessage(), e);
             }
           });
         } catch (Exception ex) {

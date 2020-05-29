@@ -132,7 +132,11 @@ public class TestBootstrap extends TestHoodieClientBase {
 
   @AfterEach
   public void tearDown() throws Exception {
-    cleanupResources();
+    cleanupMetaClient();
+    cleanupTestDataGenerator();
+    cleanupFileSystem();
+    // Do NOT cleanup Spark Context as it is being provided and reused by other tests in hudi-spark.
+    // See HoodieClientTestHarness.initSparkContexts()
   }
 
   public Schema generateNewDataSetAndReturnSchema(double timestamp, int numRecords, List<String> partitionPaths,
@@ -147,8 +151,8 @@ public class TestBootstrap extends TestHoodieClientBase {
       df.write().format("parquet").mode(SaveMode.Overwrite).save(srcPath);
     }
     String filePath = FileStatusUtils.toPath(FSUtils.getAllLeafFoldersWithFiles(metaClient.getFs(), srcPath,
-        (status) -> true).stream().findAny().map(p -> p.getValue().stream().findAny()).orElse(null)
-        .get().getPath()).toString();
+        (status) -> status.getName().endsWith(".parquet")).stream().findAny().map(p -> p.getValue().stream().findAny())
+        .orElse(null).get().getPath()).toString();
     ParquetFileReader reader = ParquetFileReader.open(metaClient.getHadoopConf(), new Path(filePath));
     MessageType schema = reader.getFooter().getFileMetaData().getSchema();
     return new AvroSchemaConverter().convert(schema);
