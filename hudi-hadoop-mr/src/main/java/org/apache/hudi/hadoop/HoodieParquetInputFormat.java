@@ -40,7 +40,9 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
+import org.apache.hadoop.hive.ql.io.sarg.ConvertAstToSearchArg;
 import org.apache.hadoop.hive.ql.metadata.VirtualColumn;
+import org.apache.hadoop.hive.ql.plan.TableScanDesc;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.FileSplit;
@@ -375,18 +377,26 @@ public class HoodieParquetInputFormat extends MapredParquetInputFormat implement
       List<Pair<String, String>> colNameWithTypes = HoodieColumnProjectionUtils.getIOColumnNameAndTypes(job);
       List<Pair<String, String>> colNamesWithTypesForExternal = colNameWithTypes.stream()
               .filter(p -> !HoodieRecord.HOODIE_META_COLUMNS.contains(p.getKey())).collect(Collectors.toList());
-      LOG.error("colNameWithTypes.size()" + colNameWithTypes.size());
-      LOG.error("colNameWithTypes =" + colNameWithTypes);
+      LOG.info("colNameWithTypes =" + colNameWithTypes + ", Num Entries =" + colNameWithTypes.size());
       if (hoodieColsProjected.isEmpty()) {
         return super.getRecordReader(eSplit.getExternalFileSplit(), job, reporter);
       } else if (externalColsProjected.isEmpty()) {
         return super.getRecordReader(split, job, reporter);
       } else {
         FileSplit rightSplit = eSplit.getExternalFileSplit();
+        // Hive PPD works at row-group level and only enabled when hive.optimize.index.filter=true;
+        // The above config is disabled by default. But when enabled, would cause misalignment between
+        // skeleton and external file. We will disable them specifically when query needs external and skeleton
+        // file to be stitched.
+        // This disables row-group filtering
+        JobConf jobConfCopy = new JobConf(job);
+        jobConfCopy.unset(TableScanDesc.FILTER_EXPR_CONF_STR);
+        jobConfCopy.unset(ConvertAstToSearchArg.SARG_PUSHDOWN);
+
         LOG.info("Generating column stitching reader for " + eSplit.getPath() + " and " + rightSplit.getPath());
-        return new HoodieColumnStichingRecordReader(super.getRecordReader(eSplit, job, reporter),
+        return new HoodieColumnStichingRecordReader(super.getRecordReader(eSplit, jobConfCopy, reporter),
             HoodieRecord.HOODIE_META_COLUMNS.size(),
-            super.getRecordReader(rightSplit, job, reporter),
+            super.getRecordReader(rightSplit, jobConfCopy, reporter),
             colNamesWithTypesForExternal.size(),
             true);
       }

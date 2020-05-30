@@ -292,8 +292,9 @@ public class BootstrapCommitActionExecutor<T extends HoodieRecordPayload<T>>
       HoodieTableMetaClient metaClient) throws IOException {
     //TODO: Added HoodieFilter for manually testing bootstrap from source hudi table. Needs to be reverted.
     final PathFilter hoodieFilter = new HoodieROTablePathFilter();
+    FileSystem fs = new Path(config.getBootstrapSourceBasePath()).getFileSystem(jsc.hadoopConfiguration());
     List<Pair<String, List<HoodieFileStatus>>> folders =
-        FSUtils.getAllLeafFoldersWithFiles(metaClient.getFs(),
+        FSUtils.getAllLeafFoldersWithFiles(fs,
             config.getBootstrapSourceBasePath(), new PathFilter() {
               @Override
               public boolean accept(Path path) {
