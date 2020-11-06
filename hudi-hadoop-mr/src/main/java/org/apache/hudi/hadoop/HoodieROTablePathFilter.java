@@ -18,9 +18,10 @@
 
 package org.apache.hudi.hadoop;
 
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+
 import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hudi.common.config.SerializableConfiguration;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodiePartitionMetadata;
@@ -34,13 +35,11 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hudi.metadata.HoodieMetadataReader;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +74,11 @@ public class HoodieROTablePathFilter implements Configurable, PathFilter, Serial
   Map<String, HoodieTableMetaClient> metaClientCache;
 
   /**
+   * Table Metadata Reader Cache.
+   */
+  Map<String, HoodieMetadataReader> metadataReaderCache;
+
+  /**
    * Hadoop configurations for the FileSystem.
    */
   private SerializableConfiguration conf;
@@ -90,6 +94,7 @@ public class HoodieROTablePathFilter implements Configurable, PathFilter, Serial
     this.nonHoodiePathCache = new HashSet<>();
     this.conf = new SerializableConfiguration(conf);
     this.metaClientCache = new HashMap<>();
+    this.metadataReaderCache = new HashMap<>();
   }
 
   /**
@@ -107,7 +112,6 @@ public class HoodieROTablePathFilter implements Configurable, PathFilter, Serial
 
   @Override
   public boolean accept(Path path) {
-
     if (LOG.isDebugEnabled()) {
       LOG.debug("Checking acceptance for path " + path);
     }
@@ -163,8 +167,15 @@ public class HoodieROTablePathFilter implements Configurable, PathFilter, Serial
             metaClientCache.put(baseDir.toString(), metaClient);
           }
 
+          HoodieMetadataReader metadataReader = metadataReaderCache.get(baseDir.toString());
+          if (null == metadataReader) {
+            metadataReader = new HoodieMetadataReader(getConf(), baseDir.toString(), "/tmp/", true, false);
+            metadataReaderCache.put(baseDir.toString(), metadataReader);
+          }
+
+          FileStatus[] fileStatusArray = metadataReader.getAllFilesInPartition(getConf(), baseDir.toString(), folder);
           HoodieTableFileSystemView fsView = new HoodieTableFileSystemView(metaClient,
-              metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants(), fs.listStatus(folder));
+              metaClient.getActiveTimeline().getCommitsTimeline().filterCompletedInstants(), fileStatusArray);
           List<HoodieBaseFile> latestFiles = fsView.getLatestBaseFiles().collect(Collectors.toList());
           // populate the cache
           if (!hoodiePathCache.containsKey(folder.toString())) {

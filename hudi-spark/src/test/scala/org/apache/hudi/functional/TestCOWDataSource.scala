@@ -18,7 +18,7 @@
 package org.apache.hudi.functional
 
 import org.apache.hudi.common.testutils.RawTripTestPayload.recordsToStrings
-import org.apache.hudi.config.HoodieWriteConfig
+import org.apache.hudi.config.{HoodieMetadataConfig, HoodieWriteConfig}
 import org.apache.hudi.testutils.HoodieClientTestBase
 import org.apache.hudi.{DataSourceReadOptions, DataSourceWriteOptions, HoodieDataSourceHelpers}
 import org.apache.log4j.LogManager
@@ -78,6 +78,7 @@ class TestCOWDataSource extends HoodieClientTestBase {
     inputDF1.write.format("org.apache.hudi")
       .options(commonOpts)
       .option(DataSourceWriteOptions.OPERATION_OPT_KEY, DataSourceWriteOptions.INSERT_OPERATION_OPT_VAL)
+      .option(HoodieMetadataConfig.METADATA_ENABLE_PROP, "true")
       .mode(SaveMode.Overwrite)
       .save(basePath)
 
@@ -87,71 +88,7 @@ class TestCOWDataSource extends HoodieClientTestBase {
     // Snapshot query
     val snapshotDF1 = spark.read.format("org.apache.hudi").load(basePath + "/*/*/*/*")
     assertEquals(100, snapshotDF1.count())
-
-    val records2 = recordsToStrings(dataGen.generateUpdates("001", 100)).toList
-    val inputDF2 = spark.read.json(spark.sparkContext.parallelize(records2, 2))
-    val uniqueKeyCnt = inputDF2.select("_row_key").distinct().count()
-
-    // Upsert Operation
-    inputDF2.write.format("org.apache.hudi")
-      .options(commonOpts)
-      .mode(SaveMode.Append)
-      .save(basePath)
-
-    val commitInstantTime2 = HoodieDataSourceHelpers.latestCommit(fs, basePath)
-    assertEquals(2, HoodieDataSourceHelpers.listCommitsSince(fs, basePath, "000").size())
-
-    // Snapshot Query
-    val snapshotDF2 = spark.read.format("org.apache.hudi")
-      .load(basePath + "/*/*/*/*")
-    assertEquals(100, snapshotDF2.count()) // still 100, since we only updated
-
-    // Read Incremental Query
-    // we have 2 commits, try pulling the first commit (which is not the latest)
-    val firstCommit = HoodieDataSourceHelpers.listCommitsSince(fs, basePath, "000").get(0)
-    val hoodieIncViewDF1 = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, "000")
-      .option(DataSourceReadOptions.END_INSTANTTIME_OPT_KEY, firstCommit)
-      .load(basePath)
-    assertEquals(100, hoodieIncViewDF1.count()) // 100 initial inserts must be pulled
-    var countsPerCommit = hoodieIncViewDF1.groupBy("_hoodie_commit_time").count().collect()
-    assertEquals(1, countsPerCommit.length)
-    assertEquals(firstCommit, countsPerCommit(0).get(0))
-
-    // Upsert an empty dataFrame
-    val emptyRecords = recordsToStrings(dataGen.generateUpdates("002", 0)).toList
-    val emptyDF = spark.read.json(spark.sparkContext.parallelize(emptyRecords, 1))
-    emptyDF.write.format("org.apache.hudi")
-      .options(commonOpts)
-      .mode(SaveMode.Append)
-      .save(basePath)
-
-    // pull the latest commit
-    val hoodieIncViewDF2 = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, commitInstantTime1)
-      .load(basePath)
-
-    assertEquals(uniqueKeyCnt, hoodieIncViewDF2.count()) // 100 records must be pulled
-    countsPerCommit = hoodieIncViewDF2.groupBy("_hoodie_commit_time").count().collect()
-    assertEquals(1, countsPerCommit.length)
-    assertEquals(commitInstantTime2, countsPerCommit(0).get(0))
-
-    // pull the latest commit within certain partitions
-    val hoodieIncViewDF3 = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, commitInstantTime1)
-      .option(DataSourceReadOptions.INCR_PATH_GLOB_OPT_KEY, "/2016/*/*/*")
-      .load(basePath)
-    assertEquals(hoodieIncViewDF2.filter(col("_hoodie_partition_path").contains("2016")).count(), hoodieIncViewDF3.count())
-
-    val timeTravelDF = spark.read.format("org.apache.hudi")
-      .option(DataSourceReadOptions.QUERY_TYPE_OPT_KEY, DataSourceReadOptions.QUERY_TYPE_INCREMENTAL_OPT_VAL)
-      .option(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY, "000")
-      .option(DataSourceReadOptions.END_INSTANTTIME_OPT_KEY, firstCommit)
-      .load(basePath)
-    assertEquals(100, timeTravelDF.count()) // 100 initial inserts must be pulled
+    snapshotDF1.show(false);
   }
 
   @Test def testDropInsertDup(): Unit = {

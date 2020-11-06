@@ -24,9 +24,9 @@ import org.apache.hudi.common.table.view.HoodieTableFileSystemView
 import org.apache.hudi.exception.HoodieException
 import org.apache.hudi.hadoop.utils.HoodieRealtimeInputFormatUtils
 import org.apache.hudi.hadoop.utils.HoodieRealtimeRecordReaderUtils.getMaxCompactionMemoryInBytes
-
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapred.JobConf
+import org.apache.hudi.metadata.HoodieMetadataReader
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -127,15 +127,19 @@ class MergeOnReadSnapshotRelation(val sqlContext: SQLContext,
   }
 
   def buildFileIndex(): List[HoodieMergeOnReadFileSplit] = {
-    val inMemoryFileIndex = HoodieSparkUtils.createInMemoryFileIndex(sqlContext.sparkSession, globPaths)
-    val fileStatuses = inMemoryFileIndex.allFiles()
-    if (fileStatuses.isEmpty) {
-      throw new HoodieException("No files found for reading in user provided path.")
-    }
+    //val inMemoryFileIndex = HoodieSparkUtils.createInMemoryFileIndex(sqlContext.sparkSession, globPaths)
+    //val fileStatuses = inMemoryFileIndex.allFiles()
+    //if (fileStatuses.isEmpty) {
+    //  throw new HoodieException("No files found for reading in user provided path.")
+    //}
+    val metadataReader = new HoodieMetadataReader(jobConf, metaClient.getBasePath, "/tmp/", true, false)
+    val fileStatusArray = globPaths.flatMap(path => {
+      metadataReader.getAllFilesInPartition(jobConf, metaClient.getBasePath, path)
+    }).toArray
 
     val fsView = new HoodieTableFileSystemView(metaClient,
       metaClient.getActiveTimeline.getCommitsTimeline
-        .filterCompletedInstants, fileStatuses.toArray)
+        .filterCompletedInstants, fileStatusArray)
     val latestFiles: List[HoodieBaseFile] = fsView.getLatestBaseFiles.iterator().asScala.toList
     val latestCommit = fsView.getLastInstant.get().getTimestamp
     val fileGroup = HoodieRealtimeInputFormatUtils.groupLogsByBaseFile(conf, latestFiles.asJava).asScala
